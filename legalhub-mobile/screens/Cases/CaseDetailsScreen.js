@@ -167,7 +167,7 @@ const OverviewTab = ({ caseData, editMode, form, setForm }) => {
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   return (
-    <>
+    <View>
       {/* Urgent countdown banner */}
       {caseData.nextHearing && (
         <View style={ov.urgentBanner}>
@@ -348,8 +348,8 @@ const OverviewTab = ({ caseData, editMode, form, setForm }) => {
             { icon:'tasks',       iconColor:C.amber600,  iconBg:C.amber100,  value:'5',  label:'Active Tasks' },
             { icon:'calendar',    iconColor:C.green600,  iconBg:C.green100,  value:'8',  label:'Events'       },
             { icon:'sticky-note', iconColor:C.purple600, iconBg:C.purple100, value:'12', label:'Notes'        },
-          ].map((m, i) => (
-            <View key={i} style={ov.metricCard}>
+          ].map((m) => (
+            <View key={m.label} style={ov.metricCard}>
               <View style={[ov.metricIcon, { backgroundColor: m.iconBg }]}>
                 <FontAwesome5 name={m.icon} size={18} color={m.iconColor} />
               </View>
@@ -369,7 +369,7 @@ const OverviewTab = ({ caseData, editMode, form, setForm }) => {
             { label:'Billable Hours',     value:'47.5 hrs', pct:0.75, color:C.primary },
             { label:'Non-Billable Hours', value:'12.3 hrs', pct:0.25, color:C.g400   },
           ].map((t, i) => (
-            <View key={i} style={{ marginBottom: i === 0 ? 12 : 0 }}>
+            <View key={t.label} style={{ marginBottom: i === 0 ? 12 : 0 }}>
               <View style={ov.timeRow}>
                 <Text style={ov.timeLabel}>{t.label}</Text>
                 <Text style={[ov.timeValue, { color: t.color }]}>{t.value}</Text>
@@ -409,7 +409,7 @@ const OverviewTab = ({ caseData, editMode, form, setForm }) => {
           </TouchableOpacity>
         ))}
       </View>
-    </>
+    </View>
   );
 };
 

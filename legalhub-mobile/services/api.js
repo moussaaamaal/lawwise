@@ -77,6 +77,7 @@ export const authAPI = {
   acceptInvite:       (body)                 => request('POST', '/api/auth/accept-invite',        body),
   setup2FA:           ()                     => request('POST', '/api/auth/2fa/setup',            {}),
   verify2FA:          (code)                 => request('POST', '/api/auth/2fa/verify',           { code }),
+  login2FA:           (temp_token, code)     => request('POST', '/api/auth/2fa/login',            { temp_token, code }),
   updateMe:                  (body) => request('PUT',  '/api/auth/me',                          body),
   uploadAvatar:              (formData) => requestForm('/api/auth/avatar', formData),
   changePassword:            (body) => request('PUT',  '/api/auth/change-password',             body),
@@ -174,10 +175,11 @@ export const billingAPI = {
 
 // ─── CALENDAR ─────────────────────────────────────────────────────────────
 export const calendarAPI = {
-  listEvents:  (filters = {}) => request('GET',    `/api/calendar/events?${new URLSearchParams(filters)}`),
-  createEvent: (body)         => request('POST',   '/api/calendar/events',       body),
-  updateEvent: (id, body)     => request('PUT',    `/api/calendar/events/${id}`, body),
-  deleteEvent: (id)           => request('DELETE', `/api/calendar/events/${id}`),
+  listEvents:   (filters = {}) => request('GET',    `/api/calendar/events?${new URLSearchParams(filters)}`),
+  createEvent:  (body)         => request('POST',   '/api/calendar/events',       body),
+  updateEvent:  (id, body)     => request('PUT',    `/api/calendar/events/${id}`, body),
+  deleteEvent:  (id)           => request('DELETE', `/api/calendar/events/${id}`),
+  testReminder: ()             => request('POST',   '/api/calendar/test-reminder'),
 };
 
 // ─── TASKS ────────────────────────────────────────────────────────────────

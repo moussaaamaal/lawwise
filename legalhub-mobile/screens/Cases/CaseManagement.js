@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  Image, StyleSheet, SafeAreaView, StatusBar,
+  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Linking,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
+import { casesAPI } from '../../services/api';
 
 import CaseDetailsScreen from './CaseDetailsScreen';
 
@@ -446,15 +447,23 @@ const CaseCard = ({ item, onViewDetails }) => (
     {/* Client row */}
     <View style={[s.row, { justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.gray100 }]}>
       <View style={s.row}>
-        <Image source={{ uri: item.avatar }} style={s.avatarMd} />
+        <View style={[s.avatarMd, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: C.primary }}>
+            {item.client.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+          </Text>
+        </View>
         <View style={{ marginLeft: 10 }}>
           <Text style={s.clientName}>{item.client}</Text>
-          <Text style={s.clientSince}>Client Since: {item.clientSince}</Text>
+          <Text style={s.clientSince}>Since: {item.clientSince}</Text>
         </View>
       </View>
       <View style={s.row}>
         {item.contacts.map((c, i) => (
-          <TouchableOpacity key={i} style={[s.iconBtn, { backgroundColor: c.bg, marginLeft: 6 }]}>
+          <TouchableOpacity
+            key={i}
+            style={[s.iconBtn, { backgroundColor: c.bg, marginLeft: 6 }]}
+            onPress={() => c.action && Linking.openURL(c.action)}
+          >
             <Icon lib={c.lib} name={c.name} size={14} color={c.color} />
           </TouchableOpacity>
         ))}
@@ -498,9 +507,210 @@ const CaseCard = ({ item, onViewDetails }) => (
   </View>
 );
 
+// ─── Priority → visual meta ───────────────────────────────────────────────
+const PRIORITY_META = {
+  URGENT: { urgency: 'Urgent', urgencyIcon: 'fire',                  urgencyColor: C.red600,    urgencyBg: C.red50,    borderColor: C.red500    },
+  HIGH:   { urgency: 'High',   urgencyIcon: 'exclamation-triangle',  urgencyColor: C.amber600,  urgencyBg: C.amber50,  borderColor: C.amber600  },
+  MEDIUM: { urgency: 'Medium', urgencyIcon: 'exclamation-triangle',  urgencyColor: C.amber600,  urgencyBg: C.amber50,  borderColor: C.amber600  },
+  NORMAL: { urgency: 'Normal', urgencyIcon: 'check',                 urgencyColor: C.green600,  urgencyBg: C.green50,  borderColor: C.green600  },
+  LOW:    { urgency: 'Low',    urgencyIcon: 'info-circle',           urgencyColor: C.blue600,   urgencyBg: C.blue50,   borderColor: C.secondary },
+};
+
+// ─── CaseType → label ─────────────────────────────────────────────────────
+const TYPE_LABEL = {
+  CRIMINAL:        'Criminal Law',
+  CIVIL:           'Civil Law',
+  CORPORATE:       'Corporate Law',
+  FAMILY:          'Family Law',
+  REAL_ESTATE:     'Real Estate',
+  IMMIGRATION:     'Immigration',
+  PERSONAL_INJURY: 'Personal Injury',
+  IP:              'IP Law',
+  LABOR:           'Labor Law',
+  TAX:             'Tax Law',
+  ADMINISTRATIVE:  'Administrative',
+  CONSTITUTIONAL:  'Constitutional',
+  ENVIRONMENTAL:   'Environmental',
+  BANKING:         'Banking & Finance',
+  MEDICAL:         'Medical Law',
+  COMMERCIAL:      'Commercial Law',
+  ARBITRATION:     'Arbitration',
+  INTERNATIONAL:   'International Law',
+  INHERITANCE:     'Inheritance',
+  INSURANCE:       'Insurance',
+};
+
+// ─── Filter config ─────────────────────────────────────────────────────────
+const FILTER_CONFIG = [
+  { key: 'all',    label: 'All Cases',  icon: 'briefcase',    filter: () => true },
+  { key: 'urgent', label: 'Urgent',     icon: 'fire',         filter: c => ['URGENT','HIGH'].includes((c.priority || '').toUpperCase()) },
+  { key: 'active', label: 'Active',     icon: 'clock',        filter: c => ['NEW','INVESTIGATION','PRE_TRIAL','TRIAL','APPEAL'].includes((c.status || '').toUpperCase()) },
+  { key: 'closed', label: 'Closed',     icon: 'check-circle', filter: c => ['SETTLED','CLOSED'].includes((c.status || '').toUpperCase()) },
+];
+
+// ─── Map API case → CaseCard format ──────────────────────────────────────
+const toCardFormat = (c) => {
+  const pm          = PRIORITY_META[c.priority]  || PRIORITY_META.NORMAL;
+  const typeLabel   = TYPE_LABEL[c.case_type]    || c.case_type;
+  const clientName  = c.client
+    ? `${c.client.first_name ?? ''} ${c.client.last_name ?? ''}`.trim()
+    : 'No Client';
+  const filingLabel = c.filing_date
+    ? new Date(c.filing_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    : '—';
+  const hearingLabel = c.first_hearing_date
+    ? new Date(c.first_hearing_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : null;
+
+  return {
+    _raw:         c,
+    id:           c.case_number,
+    ...pm,
+    title:        c.title,
+    subtitle:     `${typeLabel} — ${c.status.replace('_', ' ')}`,
+    tags: [
+      { label: typeLabel,                        color: C.gray600, bg: C.gray100 },
+      { label: c.status.replace(/_/g, ' '),      color: C.blue600, bg: C.blue50  },
+    ],
+    avatar:       null,
+    client:       clientName,
+    clientSince:  filingLabel,
+    contacts: [
+      ...(c.client?.email ? [{ lib: 'FA5', name: 'envelope', bg: C.purple50, color: C.purple600, action: `mailto:${c.client.email}` }] : []),
+      ...(c.client?.phone ? [{ lib: 'FA5', name: 'phone',    bg: C.blue50,   color: C.primary,   action: `tel:${c.client.phone}`   }] : [{ lib: 'FA5', name: 'phone', bg: C.blue50, color: C.primary, action: null }]),
+    ],
+    stats: [
+      { label: 'Status',   val: c.status.replace(/_/g, ' '), valColor: C.dark            },
+      { label: 'Priority', val: pm.urgency,                  valColor: pm.urgencyColor    },
+      { label: 'Type',     val: typeLabel.split(' ')[0],     valColor: C.dark             },
+      { label: 'Filed',    val: filingLabel,                  valColor: C.dark            },
+    ],
+    nextLabel:      hearingLabel ? `Hearing: ${hearingLabel}` : 'No hearing scheduled',
+    calColor:       hearingLabel ? C.primary  : C.gray400,
+    timeLeft:       hearingLabel ? 'Upcoming' : '—',
+    timeLeftColor:  hearingLabel ? C.primary  : C.gray400,
+    timeLeftBg:     hearingLabel ? C.blue50   : C.gray50,
+    // ── CaseDetailsScreen fields ──
+    type:           typeLabel,
+    phase:          c.status.replace(/_/g, ' '),
+    priority:       (c.priority || 'NORMAL').toLowerCase(),
+    status:         c.status,
+    filingDate:     c.filing_date || '',
+    court:          c.court_name       || '—',
+    judge:          c.judge_name       || '—',
+    prosecutor:     c.opposing_counsel || '—',
+    attorney:       '—',
+    caseValue:      c.estimated_value  ? `$${Number(c.estimated_value).toLocaleString()}` : '—',
+    description:    c.description || '',
+    nextHearing:    hearingLabel
+      ? { label: hearingLabel, time: '—', room: '—', countdown: '—' }
+      : null,
+    clientData: {
+      name:    clientName,
+      id:      c.client?.id    || '—',
+      avatar:  null,
+      since:   filingLabel,
+      phone:   c.client?.phone || '—',
+      email:   c.client?.email || '—',
+      address: c.client?.address || '—',
+      status:  'Active',
+      tier:    'Standard',
+    },
+  };
+};
+
 // ─── ÉCRAN ─────────────────────────────────────────────────────────────────
 export default function CaseManagement({ navigation }) {
-  const [selectedCase, setSelectedCase] = useState(null);
+  const [selectedCase,     setSelectedCase]     = useState(null);
+  const [cases,            setCases]            = useState([]);
+  const [loading,          setLoading]          = useState(true);
+  const [searchText,       setSearchText]       = useState('');
+  const [activeFilter,     setActiveFilter]     = useState('all');
+  const [typeFilter,       setTypeFilter]       = useState(null);   // e.g. 'CRIMINAL'
+  const [sortOrder,        setSortOrder]        = useState('newest');
+  const [showFilterPanel,  setShowFilterPanel]  = useState(false);
+  const [showSortPanel,    setShowSortPanel]    = useState(false);
+
+  const loadCases = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await casesAPI.list();
+      setCases(Array.isArray(data) ? data : []);
+    } catch {
+      setCases([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadCases(); }, [loadCases]);
+
+  // ── Count per type (for filter panel badges) ─────────────────────────
+  const typeCountMap2 = {};
+  cases.forEach(c => {
+    const key = (c.case_type || '').toUpperCase();
+    if (key) typeCountMap2[key] = (typeCountMap2[key] || 0) + 1;
+  });
+  // All known types; put types with cases first, then the rest alphabetically
+  const allTypeKeys = Object.keys(TYPE_LABEL).sort((a, b) => {
+    const ca = typeCountMap2[a] || 0;
+    const cb = typeCountMap2[b] || 0;
+    if (cb !== ca) return cb - ca;
+    return TYPE_LABEL[a].localeCompare(TYPE_LABEL[b]);
+  });
+
+  // ── Filtered + searched + sorted cases ───────────────────────────────
+  const filterFn = FILTER_CONFIG.find(f => f.key === activeFilter)?.filter ?? (() => true);
+  const displayCases = cases
+    .filter(filterFn)
+    .filter(c => !typeFilter || (c.case_type || '').toUpperCase() === typeFilter)
+    .filter(c => {
+      if (!searchText.trim()) return true;
+      const q = searchText.toLowerCase();
+      const clientName = c.client
+        ? `${c.client.first_name} ${c.client.last_name}`.toLowerCase()
+        : '';
+      return (
+        c.title?.toLowerCase().includes(q) ||
+        c.case_number?.toLowerCase().includes(q) ||
+        clientName.includes(q)
+      );
+    })
+    .sort((a, b) => {
+      if (sortOrder === 'oldest') return new Date(a.filing_date || 0) - new Date(b.filing_date || 0);
+      if (sortOrder === 'az')     return (a.title || '').localeCompare(b.title || '');
+      if (sortOrder === 'za')     return (b.title || '').localeCompare(a.title || '');
+      return new Date(b.filing_date || 0) - new Date(a.filing_date || 0); // newest
+    })
+    .map(toCardFormat);
+
+  // ── Tab counts ────────────────────────────────────────────────────────
+  const tabCounts = {
+    all:    cases.length,
+    urgent: cases.filter(FILTER_CONFIG[1].filter).length,
+    active: cases.filter(FILTER_CONFIG[2].filter).length,
+    closed: cases.filter(FILTER_CONFIG[3].filter).length,
+  };
+
+  // ── Dynamic statistics ────────────────────────────────────────────────
+  const TYPE_COLORS = [C.red500, C.secondary, C.green600, C.purple600, C.amber600];
+  const typeCountMap = {};
+  cases.forEach(c => {
+    const label = TYPE_LABEL[(c.case_type || '').toUpperCase()] || c.case_type || 'Other';
+    typeCountMap[label] = (typeCountMap[label] || 0) + 1;
+  });
+  const total = cases.length || 1;
+  const dynamicCaseTypes = Object.entries(typeCountMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, count], i) => ({
+      color: TYPE_COLORS[i % TYPE_COLORS.length],
+      label,
+      count: `${count} case${count !== 1 ? 's' : ''}`,
+      pct:   `${Math.round(count / total * 100)}%`,
+    }));
+  const urgentCount = tabCounts.urgent;
+  const closedCount = tabCounts.closed;
 
   // Si un case est sélectionné, on affiche CaseDetailsScreen
   if (selectedCase) {
@@ -512,8 +722,8 @@ export default function CaseManagement({ navigation }) {
     );
   }
 
-  const handleViewDetails = (caseItem) => {
-    setSelectedCase(toCaseDetails(caseItem));
+  const handleViewDetails = (cardItem) => {
+    setSelectedCase(toCaseDetails(cardItem));
   };
 
   return (
@@ -529,12 +739,14 @@ export default function CaseManagement({ navigation }) {
             </TouchableOpacity>
             <View style={{ marginLeft: 12 }}>
               <Text style={s.headerTitle}>Case Management</Text>
-              <Text style={s.headerSub}>24 Active Cases</Text>
+              <Text style={s.headerSub}>{cases.length} Case{cases.length !== 1 ? 's' : ''}</Text>
             </View>
           </View>
-          <TouchableOpacity style={{ position: 'relative' }}>
-            <Icon lib="ION" name="notifications-outline" size={26} color={C.white} />
-            <View style={s.notifBadge}><Text style={s.notifBadgeText}>7</Text></View>
+          <TouchableOpacity
+            style={[s.backBtn, { backgroundColor: 'rgba(255,255,255,0.25)' }]}
+            onPress={() => navigation?.navigate?.('AddCase', { onCreated: loadCases })}
+          >
+            <Icon lib="FA5" name="plus" size={18} color={C.white} />
           </TouchableOpacity>
         </View>
         <View style={s.searchWrap}>
@@ -543,7 +755,14 @@ export default function CaseManagement({ navigation }) {
             style={s.searchInput}
             placeholder="Search by case number, client name..."
             placeholderTextColor="rgba(255,255,255,0.6)"
+            value={searchText}
+            onChangeText={setSearchText}
           />
+          {searchText.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchText('')}>
+              <Icon lib="ION" name="close-circle" size={18} color="rgba(255,255,255,0.7)" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -552,69 +771,191 @@ export default function CaseManagement({ navigation }) {
         {/* FILTER TABS */}
         <View style={s.section}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {FILTER_TABS.map((t, i) => (
-              <TouchableOpacity key={i} style={[s.filterTab, { backgroundColor: t.active ? C.primary : C.gray100, marginRight: 8 }]}>
-                <Icon lib="FA5" name={t.icon} size={12} color={t.active ? C.white : t.color} />
-                <Text style={[s.filterTabText, { color: t.active ? C.white : C.gray700, marginLeft: 6 }]}>{t.label}</Text>
-              </TouchableOpacity>
-            ))}
+            {FILTER_CONFIG.map(t => {
+              const isActive = activeFilter === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[s.filterTab, { backgroundColor: isActive ? C.primary : C.gray100, marginRight: 8 }]}
+                  onPress={() => setActiveFilter(t.key)}
+                >
+                  <Icon lib="FA5" name={t.icon} size={12} color={isActive ? C.white : C.gray500} />
+                  <Text style={[s.filterTabText, { color: isActive ? C.white : C.gray700, marginLeft: 6 }]}>
+                    {t.label} ({tabCounts[t.key]})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
         {/* SORT/FILTER BAR */}
-        <View style={[s.section, { backgroundColor: C.blue50 }]}>
+        <View style={[s.section, { backgroundColor: C.blue50, paddingBottom: showFilterPanel || showSortPanel ? 8 : 16 }]}>
           <View style={s.row}>
-            <TouchableOpacity style={[s.sortBtn, { flex: 1, marginRight: 8 }]}>
+            <TouchableOpacity
+              style={[s.sortBtn, { flex: 1, marginRight: 8, borderColor: showFilterPanel || typeFilter ? C.primary : C.gray200 }]}
+              onPress={() => { setShowFilterPanel(v => !v); setShowSortPanel(false); }}
+            >
               <View style={s.row}>
-                <Icon lib="FA5" name="filter" size={14} color={C.primary} />
-                <Text style={[s.sortBtnText, { marginLeft: 8 }]}>Filter</Text>
+                <Icon lib="FA5" name="filter" size={14} color={typeFilter ? C.primary : C.dark} />
+                <Text style={[s.sortBtnText, { marginLeft: 8, color: typeFilter ? C.primary : C.dark }]}>
+                  {typeFilter ? (TYPE_LABEL[typeFilter] || typeFilter) : 'Filter'}
+                </Text>
               </View>
-              <Icon lib="FA5" name="chevron-down" size={10} color={C.gray400} />
+              <Icon lib="FA5" name={showFilterPanel ? 'chevron-up' : 'chevron-down'} size={10} color={C.gray400} />
             </TouchableOpacity>
-            <TouchableOpacity style={[s.sortBtn, { flex: 1, marginRight: 8 }]}>
+
+            <TouchableOpacity
+              style={[s.sortBtn, { flex: 1, marginRight: 8, borderColor: showSortPanel || sortOrder !== 'newest' ? C.primary : C.gray200 }]}
+              onPress={() => { setShowSortPanel(v => !v); setShowFilterPanel(false); }}
+            >
               <View style={s.row}>
-                <Icon lib="FA5" name="sort" size={14} color={C.primary} />
-                <Text style={[s.sortBtnText, { marginLeft: 8 }]}>Sort By</Text>
+                <Icon lib="FA5" name="sort" size={14} color={sortOrder !== 'newest' ? C.primary : C.dark} />
+                <Text style={[s.sortBtnText, { marginLeft: 8, color: sortOrder !== 'newest' ? C.primary : C.dark }]}>
+                  {{ newest: 'Newest', oldest: 'Oldest', az: 'A → Z', za: 'Z → A' }[sortOrder]}
+                </Text>
               </View>
-              <Icon lib="FA5" name="chevron-down" size={10} color={C.gray400} />
+              <Icon lib="FA5" name={showSortPanel ? 'chevron-up' : 'chevron-down'} size={10} color={C.gray400} />
             </TouchableOpacity>
-            <TouchableOpacity style={s.sliderBtn}>
-              <Icon lib="FA5" name="sliders-h" size={16} color={C.white} />
+
+            <TouchableOpacity
+              style={[s.sliderBtn, { backgroundColor: (typeFilter || sortOrder !== 'newest') ? C.primary : C.gray400 }]}
+              onPress={() => { setTypeFilter(null); setSortOrder('newest'); setShowFilterPanel(false); setShowSortPanel(false); }}
+            >
+              <Icon lib="FA5" name="times" size={16} color={C.white} />
             </TouchableOpacity>
           </View>
+
+          {/* Filter panel — case types */}
+          {showFilterPanel && (
+            <View style={s.filterPanel}>
+              <Text style={[s.xs, { color: C.gray500, marginBottom: 10 }]}>Filter by case type:</Text>
+              <View style={s.typeChipWrap}>
+                <TouchableOpacity
+                  style={[s.typeChip, !typeFilter && s.typeChipActive]}
+                  onPress={() => { setTypeFilter(null); setShowFilterPanel(false); }}
+                >
+                  <Text style={[s.typeChipText, !typeFilter && { color: C.white }]}>
+                    All Types
+                  </Text>
+                  <View style={[s.typeChipBadge, !typeFilter && { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
+                    <Text style={[s.typeChipBadgeText, !typeFilter && { color: C.white }]}>{cases.length}</Text>
+                  </View>
+                </TouchableOpacity>
+                {allTypeKeys.map(key => {
+                  const count = typeCountMap2[key] || 0;
+                  const isActive = typeFilter === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[s.typeChip, isActive && s.typeChipActive, count === 0 && s.typeChipDim]}
+                      onPress={() => { setTypeFilter(key); setShowFilterPanel(false); }}
+                    >
+                      <Text style={[s.typeChipText, isActive && { color: C.white }, count === 0 && { color: C.gray400 }]}>
+                        {TYPE_LABEL[key]}
+                      </Text>
+                      <View style={[s.typeChipBadge, isActive && { backgroundColor: 'rgba(255,255,255,0.3)' }, count === 0 && { backgroundColor: C.gray100 }]}>
+                        <Text style={[s.typeChipBadgeText, isActive && { color: C.white }, count === 0 && { color: C.gray400 }]}>{count}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* Sort panel */}
+          {showSortPanel && (
+            <View style={s.filterPanel}>
+              <Text style={[s.xs, { color: C.gray500, marginBottom: 8 }]}>Sort cases by:</Text>
+              {[
+                { key: 'newest', label: 'Newest First',  icon: 'sort-amount-down' },
+                { key: 'oldest', label: 'Oldest First',  icon: 'sort-amount-up'   },
+                { key: 'az',     label: 'Title A → Z',   icon: 'sort-alpha-down'  },
+                { key: 'za',     label: 'Title Z → A',   icon: 'sort-alpha-up-alt'},
+              ].map(opt => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[s.sortOption, sortOrder === opt.key && s.sortOptionActive]}
+                  onPress={() => { setSortOrder(opt.key); setShowSortPanel(false); }}
+                >
+                  <View style={s.row}>
+                    <Icon lib="FA5" name={opt.icon} size={13} color={sortOrder === opt.key ? C.primary : C.gray500} />
+                    <Text style={[s.sortBtnText, { marginLeft: 10, color: sortOrder === opt.key ? C.primary : C.dark }]}>
+                      {opt.label}
+                    </Text>
+                  </View>
+                  {sortOrder === opt.key && <Icon lib="FA5" name="check" size={12} color={C.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
-        {/* ACTIVE FILTERS */}
-        <View style={[s.section, { backgroundColor: C.blue50, paddingTop: 0 }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Text style={s.xs}>Active Filters:  </Text>
-            {['Criminal Law', 'High Priority'].map((f, i) => (
-              <View key={i} style={[s.activeFilter, { marginRight: 8 }]}>
-                <Text style={s.activeFilterText}>{f}</Text>
-                <TouchableOpacity style={{ marginLeft: 6 }}>
-                  <Icon lib="FA5" name="times" size={10} color={C.primary} />
-                </TouchableOpacity>
-              </View>
-            ))}
-            <TouchableOpacity><Text style={[s.xs, { color: C.primary, textDecorationLine: 'underline' }]}>Clear All</Text></TouchableOpacity>
-          </ScrollView>
-        </View>
+        {/* ACTIVE FILTERS chips */}
+        {(typeFilter || sortOrder !== 'newest') && (
+          <View style={[s.section, { backgroundColor: C.blue50, paddingTop: 0, paddingBottom: 12 }]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <Text style={[s.xs, { color: C.gray500, marginRight: 8, lineHeight: 28 }]}>Active:</Text>
+              {typeFilter && (
+                <View style={[s.activeFilter, { marginRight: 8 }]}>
+                  <Text style={s.activeFilterText}>{TYPE_LABEL[typeFilter] || typeFilter}</Text>
+                  <TouchableOpacity style={{ marginLeft: 6 }} onPress={() => setTypeFilter(null)}>
+                    <Icon lib="FA5" name="times" size={10} color={C.primary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              {sortOrder !== 'newest' && (
+                <View style={[s.activeFilter, { marginRight: 8 }]}>
+                  <Text style={s.activeFilterText}>
+                    {{ oldest: 'Oldest First', az: 'A → Z', za: 'Z → A' }[sortOrder]}
+                  </Text>
+                  <TouchableOpacity style={{ marginLeft: 6 }} onPress={() => setSortOrder('newest')}>
+                    <Icon lib="FA5" name="times" size={10} color={C.primary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              <TouchableOpacity onPress={() => { setTypeFilter(null); setSortOrder('newest'); }}>
+                <Text style={[s.xs, { color: C.primary, textDecorationLine: 'underline', lineHeight: 28 }]}>Clear All</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
 
         {/* CASES LIST */}
         <View style={s.section}>
           <View style={[s.row, { justifyContent: 'space-between', marginBottom: 12 }]}>
-            <Text style={s.sectionTitle}>All Cases</Text>
-            <View style={s.row}>
-              <TouchableOpacity style={[s.viewToggle, { backgroundColor: C.blue50 }]}>
-                <Icon lib="FA5" name="th-large" size={14} color={C.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.viewToggle, { backgroundColor: C.gray100, marginLeft: 6 }]}>
-                <Icon lib="FA5" name="list" size={14} color={C.gray400} />
-              </TouchableOpacity>
-            </View>
+            <Text style={s.sectionTitle}>
+              {displayCases.length} Case{displayCases.length !== 1 ? 's' : ''}
+              {searchText ? ` for "${searchText}"` : ''}
+            </Text>
+            <TouchableOpacity onPress={loadCases}>
+              <Icon lib="FA5" name="sync-alt" size={14} color={C.primary} />
+            </TouchableOpacity>
           </View>
-          {CASES.map((c, i) => (
-            <CaseCard key={i} item={c} onViewDetails={handleViewDetails} />
+
+          {loading && (
+            <ActivityIndicator color={C.primary} size="large" style={{ marginVertical: 24 }} />
+          )}
+          {!loading && displayCases.length === 0 && (
+            <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+              <Icon lib="FA5" name="folder-open" size={36} color={C.gray400} />
+              <Text style={[s.sm, { color: C.gray400, marginTop: 12 }]}>
+                {searchText ? 'No cases match your search.' : 'No cases found.'}
+              </Text>
+              {!searchText && (
+                <TouchableOpacity
+                  style={[s.btnPrimary, { marginTop: 16, paddingHorizontal: 24 }]}
+                  onPress={() => navigation?.navigate?.('AddCase', { onCreated: loadCases })}
+                >
+                  <Icon lib="FA5" name="plus" size={13} color={C.white} />
+                  <Text style={[s.btnPrimaryText, { marginLeft: 6 }]}>Create First Case</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          {!loading && displayCases.map((c, i) => (
+            <CaseCard key={c._raw?.id ?? i} item={c} onViewDetails={handleViewDetails} />
           ))}
         </View>
 
@@ -624,9 +965,10 @@ export default function CaseManagement({ navigation }) {
           <View style={[s.card, { marginBottom: 16 }]}>
             <View style={[s.row, { justifyContent: 'space-between', marginBottom: 12 }]}>
               <Text style={s.cardTitle}>Cases by Type</Text>
-              <TouchableOpacity><Text style={s.sectionAction}>View Report</Text></TouchableOpacity>
             </View>
-            {CASE_TYPES.map((t, i) => (
+            {dynamicCaseTypes.length === 0 ? (
+              <Text style={[s.xs, { color: C.gray400, textAlign: 'center', paddingVertical: 12 }]}>No cases yet</Text>
+            ) : dynamicCaseTypes.map((t, i) => (
               <View key={i} style={{ marginBottom: 12 }}>
                 <View style={[s.row, { justifyContent: 'space-between', marginBottom: 6 }]}>
                   <View style={s.row}>
@@ -646,39 +988,18 @@ export default function CaseManagement({ navigation }) {
               <View style={[s.statMiniIcon, { backgroundColor: C.green600 }]}>
                 <Icon lib="FA5" name="check-circle" size={20} color={C.white} />
               </View>
-              <Text style={s.statMiniCount}>87%</Text>
-              <Text style={s.statMiniLabel}>Success Rate</Text>
-              <Text style={s.statMiniSub}>+5% this month</Text>
+              <Text style={s.statMiniCount}>{closedCount}</Text>
+              <Text style={s.statMiniLabel}>Closed</Text>
+              <Text style={s.statMiniSub}>Settled or closed</Text>
             </View>
             <View style={s.statMiniCard}>
-              <View style={[s.statMiniIcon, { backgroundColor: C.amber600 }]}>
-                <Icon lib="FA5" name="clock" size={20} color={C.white} />
+              <View style={[s.statMiniIcon, { backgroundColor: C.red600 }]}>
+                <Icon lib="FA5" name="fire" size={20} color={C.white} />
               </View>
-              <Text style={s.statMiniCount}>45</Text>
-              <Text style={s.statMiniLabel}>Avg. Days</Text>
-              <Text style={[s.statMiniSub, { color: C.blue600 }]}>Per case resolution</Text>
+              <Text style={s.statMiniCount}>{urgentCount}</Text>
+              <Text style={s.statMiniLabel}>Urgent</Text>
+              <Text style={[s.statMiniSub, { color: C.red600 }]}>High priority cases</Text>
             </View>
-          </View>
-        </View>
-
-        {/* QUICK FILTERS */}
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { marginBottom: 14 }]}>Quick Filters</Text>
-          <View style={s.qfGrid}>
-            {QUICK_FILTERS.map((f, i) => (
-              <TouchableOpacity key={i} style={[s.qfCard, f.primary && { borderColor: C.primary, borderWidth: 2 }]}>
-                <View style={s.row}>
-                  <View style={[s.qfIcon, { backgroundColor: f.iconBg }]}>
-                    <Icon lib={f.iconLib} name={f.iconName} size={16} color={f.iconColor} />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={s.smBold}>{f.title}</Text>
-                    <Text style={s.xs}>{f.sub}</Text>
-                  </View>
-                </View>
-                <Text style={[s.qfCount, f.primary && { color: C.primary }]}>{f.count}</Text>
-              </TouchableOpacity>
-            ))}
           </View>
         </View>
 
@@ -870,4 +1191,15 @@ const s = StyleSheet.create({
   checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: C.gray400, marginRight: 10 },
   bulkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   bulkBtn: { width: '47%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12 },
+  // ── Filter / Sort panels ─────────────────────────────────────────────
+  filterPanel: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.gray200 },
+  typeChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: C.gray300, backgroundColor: C.white },
+  typeChipActive: { backgroundColor: C.primary, borderColor: C.primary },
+  typeChipDim: { borderColor: C.gray200, backgroundColor: C.gray50 },
+  typeChipText: { fontSize: 13, fontWeight: '600', color: C.dark },
+  typeChipBadge: { minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 10, backgroundColor: C.blue50, alignItems: 'center', justifyContent: 'center' },
+  typeChipBadgeText: { fontSize: 11, fontWeight: '700', color: C.primary },
+  sortOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4 },
+  sortOptionActive: { backgroundColor: C.blue50 },
 });

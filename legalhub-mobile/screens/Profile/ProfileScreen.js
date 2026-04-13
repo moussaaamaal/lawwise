@@ -801,57 +801,63 @@ export default function ProfileScreen({ navigation }) {
 
       {/* ── 2FA SETUP MODAL ── */}
       <Modal visible={twoFAModal} transparent animationType="slide" onRequestClose={() => setTwoFAModal(false)}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalBox}>
-            <View style={[s.row, { justifyContent: 'space-between', marginBottom: 16 }]}>
-              <Text style={s.sectionTitle}>Setup Two-Factor Auth</Text>
-              <TouchableOpacity onPress={() => { setTwoFAModal(false); setTwoFACode(''); }}>
-                <Icon lib="FA5" name="times" size={18} color={C.gray500} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[s.xs, { marginBottom: 12, lineHeight: 18 }]}>
-              1. Open <Text style={{ fontWeight: '700' }}>Google Authenticator</Text> or <Text style={{ fontWeight: '700' }}>Authy</Text> on your phone.{'\n'}
-              2. Tap the button below to add LegalHub, or enter the secret key manually.
-            </Text>
-
-            <TouchableOpacity
-              style={[s.actionBtn, { backgroundColor: C.blue50, borderWidth: 1, borderColor: C.blue100, marginBottom: 12, alignItems: 'center' }]}
-              onPress={() => twoFAData && Linking.openURL(twoFAData.qr_code_url)}
+          <View style={s.modalOverlay}>
+            <ScrollView
+              contentContainerStyle={s.modalBox}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <Icon lib="FA5" name="qrcode" size={16} color={C.primary} />
-              <Text style={[s.smBold, { color: C.primary, marginTop: 4 }]}>Open in Authenticator App</Text>
-            </TouchableOpacity>
-
-            {twoFAData && (
-              <View style={{ backgroundColor: C.gray50, borderRadius: 10, padding: 10, marginBottom: 14 }}>
-                <Text style={[s.xs, { marginBottom: 4 }]}>Manual secret key:</Text>
-                <Text selectable style={[s.smBold, { letterSpacing: 2, color: C.primary }]}>{twoFAData.secret}</Text>
+              <View style={[s.row, { justifyContent: 'space-between', marginBottom: 16 }]}>
+                <Text style={s.sectionTitle}>Setup Two-Factor Auth</Text>
+                <TouchableOpacity onPress={() => { setTwoFAModal(false); setTwoFACode(''); }}>
+                  <Icon lib="FA5" name="times" size={18} color={C.gray500} />
+                </TouchableOpacity>
               </View>
-            )}
 
-            <Text style={s.fieldLabel}>Enter the 6-digit code from your app</Text>
-            <TextInput
-              style={[s.pwdInput, { marginBottom: 16, textAlign: 'center', letterSpacing: 8, fontSize: 22 }]}
-              placeholder="000000"
-              placeholderTextColor={C.gray400}
-              keyboardType="number-pad"
-              maxLength={6}
-              value={twoFACode}
-              onChangeText={setTwoFACode}
-            />
-            <TouchableOpacity
-              style={[s.actionBtn, { backgroundColor: C.primary, alignItems: 'center', paddingVertical: 14 }]}
-              onPress={handleVerify2FA}
-              disabled={twoFALoading}
-            >
-              {twoFALoading
-                ? <ActivityIndicator color={C.white} />
-                : <Text style={[s.smBold, { color: C.white }]}>Verify & Enable 2FA</Text>
-              }
-            </TouchableOpacity>
+              <Text style={[s.xs, { marginBottom: 12, lineHeight: 18 }]}>
+                1. Open <Text style={{ fontWeight: '700' }}>Google Authenticator</Text> or <Text style={{ fontWeight: '700' }}>Authy</Text> on your phone.{'\n'}
+                2. Tap the button below to add LegalHub, or enter the secret key manually.
+              </Text>
+
+              <TouchableOpacity
+                style={[s.actionBtn, { backgroundColor: C.blue50, borderWidth: 1, borderColor: C.blue100, marginBottom: 12, alignItems: 'center' }]}
+                onPress={() => twoFAData && Linking.openURL(twoFAData.qr_code_url)}
+              >
+                <Icon lib="FA5" name="qrcode" size={16} color={C.primary} />
+                <Text style={[s.smBold, { color: C.primary, marginTop: 4 }]}>Open in Authenticator App</Text>
+              </TouchableOpacity>
+
+              {twoFAData && (
+                <View style={{ backgroundColor: C.gray50, borderRadius: 10, padding: 10, marginBottom: 14 }}>
+                  <Text style={[s.xs, { marginBottom: 4 }]}>Manual secret key:</Text>
+                  <Text selectable style={[s.smBold, { letterSpacing: 2, color: C.primary }]}>{twoFAData.secret}</Text>
+                </View>
+              )}
+
+              <Text style={s.fieldLabel}>Enter the 6-digit code from your app</Text>
+              <TextInput
+                style={[s.pwdInput, { marginBottom: 16, textAlign: 'center', letterSpacing: 8, fontSize: 22 }]}
+                placeholder="000000"
+                placeholderTextColor={C.gray400}
+                keyboardType="number-pad"
+                maxLength={6}
+                value={twoFACode}
+                onChangeText={setTwoFACode}
+                returnKeyType="done"
+                onSubmitEditing={handleVerify2FA}
+              />
+              <TouchableOpacity
+                style={[s.actionBtn, { backgroundColor: C.primary, alignItems: 'center', paddingVertical: 14 }]}
+                onPress={handleVerify2FA}
+                disabled={twoFALoading}
+              >
+                {twoFALoading
+                  ? <ActivityIndicator color={C.white} />
+                  : <Text style={[s.smBold, { color: C.white }]}>Verify & Enable 2FA</Text>
+                }
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
       </Modal>
 
       {/* ── LOGIN HISTORY MODAL ── */}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  StyleSheet, StatusBar, Alert, ActivityIndicator,
+  StyleSheet, StatusBar, Alert, ActivityIndicator, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
@@ -56,6 +56,11 @@ export default function AuthScreen() {
   const [loading, setLoading]                 = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [bioLoading, setBioLoading]           = useState(false);
+  // 2FA challenge modal
+  const [twoFAModal, setTwoFAModal]           = useState(false);
+  const [twoFATempToken, setTwoFATempToken]   = useState('');
+  const [twoFACode, setTwoFACode]             = useState('');
+  const [twoFALoading, setTwoFALoading]       = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -154,6 +159,15 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       const data = await authAPI.login(email, password);
+
+      // 2FA required — show TOTP challenge modal
+      if (data.requires_2fa) {
+        setTwoFATempToken(data.temp_token);
+        setTwoFACode('');
+        setTwoFAModal(true);
+        return;
+      }
+
       await signIn(data.access_token, data.refresh_token, data.user);
 
       // Save credentials for biometric login (SecureStore, encrypted)
@@ -167,6 +181,28 @@ export default function AuthScreen() {
       Alert.alert('Sign In Failed', err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Complete 2FA login
+  const handleComplete2FALogin = async () => {
+    if (!twoFACode.trim()) return;
+    setTwoFALoading(true);
+    try {
+      const data = await authAPI.login2FA(twoFATempToken, twoFACode.trim());
+      setTwoFAModal(false);
+      await signIn(data.access_token, data.refresh_token, data.user);
+
+      const supported = await LocalAuthentication.hasHardwareAsync();
+      const enrolled  = await LocalAuthentication.isEnrolledAsync();
+      if (supported && enrolled) {
+        await SecureStore.setItemAsync(BIO_EMAIL_KEY, email);
+        await SecureStore.setItemAsync(BIO_PASS_KEY,  password);
+      }
+    } catch (err) {
+      Alert.alert('Invalid Code', err.message || 'The code is incorrect or expired.');
+    } finally {
+      setTwoFALoading(false);
     }
   };
 
@@ -838,6 +874,62 @@ export default function AuthScreen() {
         </View>
 
       </ScrollView>
+
+      {/* ── 2FA Challenge Modal ───────────────────────────────────────── */}
+      <Modal visible={twoFAModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: C.white, borderRadius: 16, padding: 28, width: '100%', maxWidth: 380 }}>
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: C.blue100, justifyContent: 'center', alignItems: 'center', marginBottom: 12 }}>
+                <FontAwesome5 name="shield-alt" size={24} color={C.primary} />
+              </View>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: C.dark }}>Two-Factor Authentication</Text>
+              <Text style={{ fontSize: 14, color: C.g500, marginTop: 6, textAlign: 'center' }}>
+                Enter the 6-digit code from your authenticator app to continue.
+              </Text>
+            </View>
+
+            <TextInput
+              style={{
+                borderWidth: 1.5, borderColor: C.g200, borderRadius: 12,
+                padding: 14, fontSize: 24, letterSpacing: 8, textAlign: 'center',
+                color: C.dark, fontWeight: '700', marginBottom: 20,
+              }}
+              placeholder="000000"
+              placeholderTextColor={C.g400}
+              keyboardType="number-pad"
+              maxLength={6}
+              value={twoFACode}
+              onChangeText={setTwoFACode}
+              returnKeyType="done"
+              onSubmitEditing={handleComplete2FALogin}
+              autoFocus
+            />
+
+            <TouchableOpacity
+              style={{
+                backgroundColor: twoFALoading ? C.g200 : C.primary,
+                borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 12,
+              }}
+              onPress={handleComplete2FALogin}
+              disabled={twoFALoading}
+            >
+              {twoFALoading
+                ? <ActivityIndicator color={C.white} />
+                : <Text style={{ color: C.white, fontWeight: '700', fontSize: 16 }}>Verify & Sign In</Text>
+              }
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{ alignItems: 'center', padding: 10 }}
+              onPress={() => { setTwoFAModal(false); setTwoFACode(''); }}
+            >
+              <Text style={{ color: C.g500, fontSize: 14 }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }

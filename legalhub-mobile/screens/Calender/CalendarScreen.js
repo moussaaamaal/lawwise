@@ -5,6 +5,7 @@ import {
   Modal, TextInput, Alert, ActivityIndicator,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { calendarAPI } from '../../services/api';
 
 // ─── COULEURS ──────────────────────────────────────────────────────────────
@@ -86,11 +87,13 @@ const FILTER_TABS = [
   { key: 'COURT_DATE',   label: 'Court Dates',  iconLib: 'FA5', iconName: 'landmark'  },
 ];
 
-const REMINDER_PREFS = [
-  { iconLib: 'FA5', iconName: 'bell',     iconColor: C.primary,   iconBg: C.blue100,   title: 'Push Notifications', sub: 'Get alerts on your device',   defaultOn: true,  onColor: C.primary   },
-  { iconLib: 'FA5', iconName: 'envelope', iconColor: C.green600,  iconBg: C.green100,  title: 'Email Reminders',    sub: 'Receive email notifications', defaultOn: true,  onColor: C.green600  },
-  { iconLib: 'FA5', iconName: 'comment',  iconColor: C.purple600, iconBg: C.purple100, title: 'SMS Alerts',         sub: 'Text message notifications',  defaultOn: false, onColor: C.purple600 },
+const REMINDER_PREFS_META = [
+  { key: 'push',  iconLib: 'FA5', iconName: 'bell',     iconColor: C.primary,  iconBg: C.blue100,  title: 'Push Notifications', sub: 'Get alerts on your device',   defaultOn: true, onColor: C.primary  },
+  { key: 'email', iconLib: 'FA5', iconName: 'envelope', iconColor: C.green600, iconBg: C.green100, title: 'Email Reminders',    sub: 'Receive email notifications', defaultOn: true, onColor: C.green600 },
 ];
+const REMINDER_STORAGE_KEY = 'lh_cal_reminder_prefs';
+const REMINDER_TIME_KEY    = 'lh_cal_reminder_time';
+const REMINDER_DEFAULTS    = { push: true, email: true };
 
 // ─── EVENT CARD ───────────────────────────────────────────────────────────
 const EventCard = ({ ev, onDelete, showDate = false }) => {
@@ -131,10 +134,6 @@ const EventCard = ({ ev, onDelete, showDate = false }) => {
   );
 };
 
-const ToggleSwitch = ({ value, color = C.primary }) => {
-  const [on, setOn] = useState(value);
-  return <Switch value={on} onValueChange={setOn} trackColor={{ false: C.gray200, true: color }} thumbColor={C.white} />;
-};
 
 // ─── MINI CALENDAR PICKER (pure JS) ───────────────────────────────────────
 function CalendarPicker({ selectedDate, onSelect, onClose }) {
@@ -193,6 +192,14 @@ function CalendarPicker({ selectedDate, onSelect, onClose }) {
 const EVENT_TYPES = ['HEARING', 'MEETING', 'DEADLINE', 'CONSULTATION', 'COURT_DATE'];
 const fmtDate = (d) => `${d.getDate()} / ${d.getMonth() + 1} / ${d.getFullYear()}`;
 
+const RECURRENCE_OPTS = [
+  { val: 'none',     lab: 'None'     },
+  { val: 'weekly',   lab: 'Weekly'   },
+  { val: 'biweekly', lab: 'Bi-weekly'},
+  { val: 'monthly',  lab: 'Monthly'  },
+];
+const UNIT_LABEL = { weekly: 'week(s)', biweekly: 'bi-week(s)', monthly: 'month(s)' };
+
 function AddEventModal({ visible, onClose, onCreated }) {
   const [title, setTitle]             = useState('');
   const [type, setType]               = useState('MEETING');
@@ -206,31 +213,57 @@ function AddEventModal({ visible, onClose, onCreated }) {
   const [endM, setEndM]               = useState('00');
   const [showCal, setShowCal]         = useState(false);
 
+  // Recurrence
+  const [recurrence,      setRecurrence]      = useState('none');
+  const [limitType,       setLimitType]       = useState('count');   // 'count' | 'until'
+  const [recCount,        setRecCount]        = useState('4');
+  const [untilDate,       setUntilDate]       = useState(new Date());
+  const [showUntilCal,    setShowUntilCal]    = useState(false);
+
   const reset = () => {
-    setTitle(''); setType('meeting'); setDescription('');
-    setSelDate(new Date()); setStartH('09'); setStartM('00'); setEndH('10'); setEndM('00');
-    setShowCal(false);
+    setTitle(''); setType('MEETING'); setDescription('');
+    setSelDate(new Date()); setStartH('09'); setStartM('00');
+    setEndH('10'); setEndM('00'); setShowCal(false);
+    setRecurrence('none'); setLimitType('count'); setRecCount('4');
+    setUntilDate(new Date()); setShowUntilCal(false);
   };
 
   const handleCreate = async () => {
     if (!title.trim()) { Alert.alert('Required', 'Please enter a title.'); return; }
+
     const sh = parseInt(startH) || 0, sm = parseInt(startM) || 0;
     const eh = parseInt(endH)   || 0, em = parseInt(endM)   || 0;
-
     const start = new Date(selDate); start.setHours(sh, sm, 0, 0);
     const end   = new Date(selDate); end.setHours(eh, em, 0, 0);
 
+    const payload = {
+      title:          title.trim(),
+      event_type:     type,
+      start_datetime: start.toISOString(),
+      end_datetime:   end > start ? end.toISOString() : null,
+      description:    description.trim() || null,
+      recurrence,
+    };
+
+    if (recurrence !== 'none') {
+      if (limitType === 'count') {
+        const count = parseInt(recCount, 10);
+        if (!count || count < 1) { Alert.alert('Validation', 'Enter a valid number of occurrences (≥ 1).'); return; }
+        if (count > 104)         { Alert.alert('Validation', 'Maximum 104 occurrences.');                  return; }
+        payload.recurrence_count = count;
+      } else {
+        const untilIso = untilDate.toISOString().split('T')[0];
+        const startIso = selDate.toISOString().split('T')[0];
+        if (untilIso <= startIso) { Alert.alert('Validation', 'End date must be after the event date.'); return; }
+        payload.recurrence_until = untilIso;
+      }
+    }
+
     setSaving(true);
     try {
-      const ev = await calendarAPI.createEvent({
-        title: title.trim(),
-        event_type: type,
-        start_datetime: start.toISOString(),
-        end_datetime: end > start ? end.toISOString() : null,
-        description: description.trim() || null,
-      });
+      await calendarAPI.createEvent(payload);
       reset();
-      onCreated(ev);
+      onCreated();
     } catch (err) {
       Alert.alert('Error', err.message || 'Could not create event.');
     } finally {
@@ -281,42 +314,94 @@ function AddEventModal({ visible, onClose, onCreated }) {
             {/* Start time */}
             <Text style={m.label}>Start Time *</Text>
             <View style={m.timeRow}>
-              <TextInput
-                style={[m.input, m.timeInput]}
-                placeholder="09" value={startH}
-                onChangeText={t => setStartH(t.replace(/\D/g,'').slice(0,2))}
-                keyboardType="number-pad" maxLength={2}
-              />
+              <TextInput style={[m.input, m.timeInput]} placeholder="09" value={startH} onChangeText={t => setStartH(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} />
               <Text style={m.timeSep}>:</Text>
-              <TextInput
-                style={[m.input, m.timeInput]}
-                placeholder="00" value={startM}
-                onChangeText={t => setStartM(t.replace(/\D/g,'').slice(0,2))}
-                keyboardType="number-pad" maxLength={2}
-              />
+              <TextInput style={[m.input, m.timeInput]} placeholder="00" value={startM} onChangeText={t => setStartM(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} />
             </View>
 
             {/* End time */}
             <Text style={m.label}>End Time</Text>
             <View style={m.timeRow}>
-              <TextInput
-                style={[m.input, m.timeInput]}
-                placeholder="10" value={endH}
-                onChangeText={t => setEndH(t.replace(/\D/g,'').slice(0,2))}
-                keyboardType="number-pad" maxLength={2}
-              />
+              <TextInput style={[m.input, m.timeInput]} placeholder="10" value={endH} onChangeText={t => setEndH(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} />
               <Text style={m.timeSep}>:</Text>
-              <TextInput
-                style={[m.input, m.timeInput]}
-                placeholder="00" value={endM}
-                onChangeText={t => setEndM(t.replace(/\D/g,'').slice(0,2))}
-                keyboardType="number-pad" maxLength={2}
-              />
+              <TextInput style={[m.input, m.timeInput]} placeholder="00" value={endM} onChangeText={t => setEndM(t.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad" maxLength={2} />
             </View>
 
             {/* Description */}
             <Text style={m.label}>Description</Text>
             <TextInput style={[m.input, { height: 80, textAlignVertical: 'top' }]} placeholder="Optional details..." value={description} onChangeText={setDescription} multiline />
+
+            {/* ── Recurrence ───────────────────────────────────────────── */}
+            <Text style={m.label}>Recurrence</Text>
+            <View style={m.recRow}>
+              {RECURRENCE_OPTS.map(({ val, lab }) => (
+                <TouchableOpacity
+                  key={val}
+                  style={[m.recBtn, recurrence === val && m.recBtnActive]}
+                  onPress={() => setRecurrence(val)}
+                >
+                  <Text style={[m.recText, recurrence === val && m.recTextActive]}>{lab}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {recurrence !== 'none' && (
+              <View style={m.limitBox}>
+                <Text style={[m.label, { marginTop: 0, marginBottom: 10 }]}>Repeat limit</Text>
+
+                {/* Toggle count / until */}
+                <View style={m.limitToggle}>
+                  <TouchableOpacity
+                    style={[m.limitTab, limitType === 'count' && m.limitTabActive]}
+                    onPress={() => setLimitType('count')}
+                  >
+                    <Icon lib="FA5" name="hashtag" size={11} color={limitType === 'count' ? C.white : C.gray600} />
+                    <Text style={[m.limitTabTxt, limitType === 'count' && m.limitTabTxtActive]}>Number of times</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[m.limitTab, limitType === 'until' && m.limitTabActive]}
+                    onPress={() => { setLimitType('until'); setShowUntilCal(false); }}
+                  >
+                    <Icon lib="FA5" name="calendar-times" size={11} color={limitType === 'until' ? C.white : C.gray600} />
+                    <Text style={[m.limitTabTxt, limitType === 'until' && m.limitTabTxtActive]}>End date</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {limitType === 'count' ? (
+                  <View style={m.countRow}>
+                    <TouchableOpacity style={m.countBtn} onPress={() => setRecCount(v => String(Math.max(1, parseInt(v||'1',10) - 1)))}>
+                      <Icon lib="FA5" name="minus" size={12} color={C.primary} />
+                    </TouchableOpacity>
+                    <TextInput
+                      style={m.countInput}
+                      keyboardType="number-pad"
+                      value={recCount}
+                      onChangeText={v => setRecCount(v.replace(/[^0-9]/g,''))}
+                      maxLength={3}
+                    />
+                    <TouchableOpacity style={m.countBtn} onPress={() => setRecCount(v => String(Math.min(104, parseInt(v||'0',10) + 1)))}>
+                      <Icon lib="FA5" name="plus" size={12} color={C.primary} />
+                    </TouchableOpacity>
+                    <Text style={m.countUnit}>{UNIT_LABEL[recurrence] || 'time(s)'}</Text>
+                  </View>
+                ) : (
+                  <View>
+                    <TouchableOpacity style={m.pickerBtn} onPress={() => setShowUntilCal(v => !v)}>
+                      <Icon lib="FA5" name="calendar-times" size={14} color={C.primary} />
+                      <Text style={m.pickerBtnText}>{fmtDate(untilDate)}</Text>
+                      <Icon lib="FA5" name={showUntilCal ? 'chevron-up' : 'chevron-down'} size={11} color={C.gray500} style={{ marginLeft: 'auto' }} />
+                    </TouchableOpacity>
+                    {showUntilCal && (
+                      <CalendarPicker
+                        selectedDate={untilDate}
+                        onSelect={setUntilDate}
+                        onClose={() => setShowUntilCal(false)}
+                      />
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
 
             <TouchableOpacity style={[m.createBtn, saving && { opacity: 0.6 }]} onPress={handleCreate} disabled={saving}>
               {saving ? <ActivityIndicator color={C.white} /> : <Text style={m.createBtnText}>Create Event</Text>}
@@ -336,6 +421,7 @@ export default function CalendarScreen({ navigation }) {
   const [viewMode, setViewMode] = useState('week');
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedReminder, setSelectedReminder] = useState('30min');
+  const [reminderToggles, setReminderToggles]   = useState(REMINDER_DEFAULTS);
   const [addModal, setAddModal] = useState(false);
 
   const [events, setEvents]     = useState([]);
@@ -355,6 +441,23 @@ export default function CalendarScreen({ navigation }) {
   }, []);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  // Load saved reminder prefs
+  useEffect(() => {
+    AsyncStorage.getItem(REMINDER_STORAGE_KEY).then(v => { if (v) setReminderToggles(JSON.parse(v)); });
+    AsyncStorage.getItem(REMINDER_TIME_KEY).then(v => { if (v) setSelectedReminder(v); });
+  }, []);
+
+  const handleReminderToggle = (key, val) => {
+    const updated = { ...reminderToggles, [key]: val };
+    setReminderToggles(updated);
+    AsyncStorage.setItem(REMINDER_STORAGE_KEY, JSON.stringify(updated));
+  };
+
+  const handleReminderTime = (key) => {
+    setSelectedReminder(key);
+    AsyncStorage.setItem(REMINDER_TIME_KEY, key);
+  };
 
   // Filtered events
   const filteredEvents = activeFilter === 'all' ? events : events.filter(e => (e.event_type || '').toUpperCase() === activeFilter);
@@ -403,9 +506,9 @@ export default function CalendarScreen({ navigation }) {
   const prevMonth = () => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); };
   const nextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); };
 
-  const handleEventCreated = (ev) => {
-    setEvents(prev => [...prev, ev]);
+  const handleEventCreated = () => {
     setAddModal(false);
+    loadEvents();   // recharge tout — indispensable pour les récurrences (n occurrences créées)
   };
 
   const handleDeleteEvent = (id) => {
@@ -583,8 +686,8 @@ export default function CalendarScreen({ navigation }) {
         <View style={[s.section, { backgroundColor: C.indigo50 }]}>
           <Text style={[s.sectionTitle, { marginBottom: 14 }]}>Reminder Preferences</Text>
           <View style={s.prefCard}>
-            {REMINDER_PREFS.map((p, i) => (
-              <View key={i} style={[s.prefRow, i < REMINDER_PREFS.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.gray100, marginBottom: 14 }]}>
+            {REMINDER_PREFS_META.map((p, i) => (
+              <View key={p.key} style={[s.prefRow, i < REMINDER_PREFS_META.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.gray100, marginBottom: 14 }]}>
                 <View style={[s.iconBtn40, { backgroundColor: p.iconBg }]}>
                   <Icon lib={p.iconLib} name={p.iconName} size={16} color={p.iconColor} />
                 </View>
@@ -592,7 +695,12 @@ export default function CalendarScreen({ navigation }) {
                   <Text style={s.smBold}>{p.title}</Text>
                   <Text style={s.xs}>{p.sub}</Text>
                 </View>
-                <ToggleSwitch value={p.defaultOn} color={p.onColor} />
+                <Switch
+                  value={!!reminderToggles[p.key]}
+                  onValueChange={val => handleReminderToggle(p.key, val)}
+                  trackColor={{ false: C.gray200, true: p.onColor }}
+                  thumbColor={C.white}
+                />
               </View>
             ))}
             <View style={{ marginTop: 14 }}>
@@ -602,12 +710,13 @@ export default function CalendarScreen({ navigation }) {
                 { key: '1h',    label: '1 hour before'     },
                 { key: '1d',    label: '1 day before'      },
               ].map((r) => (
-                <TouchableOpacity key={r.key} style={[s.reminderOption, selectedReminder === r.key && { backgroundColor: C.blue50 }]} onPress={() => setSelectedReminder(r.key)}>
+                <TouchableOpacity key={r.key} style={[s.reminderOption, selectedReminder === r.key && { backgroundColor: C.blue50 }]} onPress={() => handleReminderTime(r.key)}>
                   <Text style={[s.sm, selectedReminder === r.key && { color: C.primary, fontWeight: '600' }]}>{r.label}</Text>
                   {selectedReminder === r.key && <Icon lib="FA5" name="check" size={12} color={C.primary} />}
                 </TouchableOpacity>
               ))}
             </View>
+
           </View>
         </View>
 
@@ -640,6 +749,22 @@ const m = StyleSheet.create({
   timeSep:       { fontSize: 22, fontWeight: '700', color: C.dark },
   createBtn:     { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 24, marginBottom: 8 },
   createBtnText: { color: C.white, fontWeight: '700', fontSize: 15 },
+  // Recurrence
+  recRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  recBtn:          { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: C.gray200 },
+  recBtnActive:    { backgroundColor: C.primary, borderColor: C.primary },
+  recText:         { fontSize: 12, fontWeight: '600', color: C.gray600 },
+  recTextActive:   { color: C.white },
+  limitBox:        { marginTop: 12, backgroundColor: C.gray50, borderRadius: 12, padding: 14, borderWidth: 1.5, borderColor: C.gray200 },
+  limitToggle:     { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  limitTab:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, borderColor: C.gray200 },
+  limitTabActive:  { backgroundColor: C.primary, borderColor: C.primary },
+  limitTabTxt:     { fontSize: 12, fontWeight: '600', color: C.gray600 },
+  limitTabTxtActive: { color: C.white },
+  countRow:        { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  countBtn:        { width: 34, height: 34, borderRadius: 10, borderWidth: 1.5, borderColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  countInput:      { width: 56, textAlign: 'center', fontSize: 20, fontWeight: '800', color: C.dark, borderWidth: 1.5, borderColor: C.gray200, borderRadius: 10, paddingVertical: 4 },
+  countUnit:       { fontSize: 13, fontWeight: '600', color: C.gray500 },
 });
 
 // ─── STYLES ───────────────────────────────────────────────────────────────
