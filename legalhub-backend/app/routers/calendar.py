@@ -108,11 +108,17 @@ def _generate_occurrences(
 @router.get("/events")
 async def list_events(
     event_type: Optional[str] = None,
+    case_id: Optional[str] = None,
+    from_date: Optional[str] = None,
     current_user=Depends(get_current_user)
 ):
     query = supabase.table("calendar_event").select("*").eq("firm_id", current_user["firm_id"])
     if event_type:
         query = query.eq("event_type", event_type)
+    if case_id:
+        query = query.eq("case_id", case_id)
+    if from_date:
+        query = query.gte("start_datetime", from_date)
     result = query.order("start_datetime").execute()
     return result.data
 
@@ -148,11 +154,22 @@ async def create_event(body: CreateEventRequest, current_user=Depends(get_lawyer
         created = result.data
 
     if body.case_id:
-        label = f" (repeats {body.recurrence})" if body.recurrence != "none" else ""
+        _EVENT_LABELS = {
+            "HEARING": "Court Hearing", "COURT_DATE": "Court Date",
+            "MEETING": "Meeting", "CONSULTATION": "Consultation",
+            "DEADLINE": "Deadline", "FILING": "Filing",
+            "DEPOSITION": "Deposition", "MEDIATION": "Mediation",
+            "ARBITRATION": "Arbitration",
+        }
+        ev_type = _EVENT_LABELS.get(
+            str(body.event_type).upper(),
+            str(body.event_type).replace("_", " ").title(),
+        )
+        recurrence_note = f" (repeats {body.recurrence})" if body.recurrence != "none" else ""
         supabase.table("case_timeline").insert({
             "case_id":      body.case_id,
             "firm_id":      current_user["firm_id"],
-            "action":       f"Event created: {body.title} ({body.event_type}){label}",
+            "action":       f"{ev_type} scheduled: {body.title}{recurrence_note}",
             "performed_by": current_user["id"],
         }).execute()
 

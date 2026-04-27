@@ -84,6 +84,68 @@ async def get_today_schedule(current_user=Depends(get_lawyer)):
 
 # ─── GET /api/dashboard/recent-cases ────────────────────
 
+_EVENT_TYPE_LABELS = {
+    "HEARING":      "Court Hearing",
+    "COURT_DATE":   "Court Date",
+    "MEETING":      "Meeting",
+    "CONSULTATION": "Consultation",
+    "DEADLINE":     "Deadline",
+    "FILING":       "Filing",
+    "DEPOSITION":   "Deposition",
+    "MEDIATION":    "Mediation",
+    "ARBITRATION":  "Arbitration",
+}
+
+@router.get("/recent-activity")
+async def get_recent_activity(current_user=Depends(get_lawyer)):
+    """
+    10 most recent activity entries: case timeline events + calendar events,
+    merged and sorted by date.
+    """
+    firm_id = current_user["firm_id"]
+
+    # ── Case timeline entries ──────────────────────────────────────────────
+    timeline = (
+        supabase.table("case_timeline")
+        .select("*, case_file(id, title, case_number)")
+        .eq("firm_id", firm_id)
+        .order("created_at", desc=True)
+        .limit(10)
+        .execute()
+    ).data or []
+
+    # ── Calendar events WITHOUT a case_id only ────────────────────────────
+    # Events linked to a case already produce a case_timeline entry — skip
+    # them here to avoid duplicates in the feed.
+    cal_result = (
+        supabase.table("calendar_event")
+        .select("id, title, event_type, created_at")
+        .eq("firm_id", firm_id)
+        .is_("case_id", "null")
+        .order("created_at", desc=True)
+        .limit(10)
+        .execute()
+    ).data or []
+
+    formatted_events = []
+    for ev in cal_result:
+        ev_type = _EVENT_TYPE_LABELS.get(
+            (ev.get("event_type") or "").upper(),
+            (ev.get("event_type") or "Event").replace("_", " ").title(),
+        )
+        formatted_events.append({
+            "id":         f"evt_{ev['id']}",
+            "action":     f"{ev_type} scheduled: {ev['title']}",
+            "created_at": ev.get("created_at"),
+            "case_file":  None,
+        })
+
+    # ── Merge, sort, return top 10 ─────────────────────────────────────────
+    all_activity = timeline + formatted_events
+    all_activity.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return all_activity[:10]
+
+
 @router.get("/recent-cases")
 async def get_recent_cases(current_user=Depends(get_lawyer)):
     """5 most recently updated active cases — used for quick preview strip."""

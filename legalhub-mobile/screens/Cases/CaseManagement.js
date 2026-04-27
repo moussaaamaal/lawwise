@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Linking,
+  RefreshControl, Alert,
 } from 'react-native';
 import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
-import { casesAPI } from '../../services/api';
+import { casesAPI, calendarAPI, dashboardAPI } from '../../services/api';
 
 import CaseDetailsScreen from './CaseDetailsScreen';
+import AddCaseScreen from './AddCaseScreen';
 
 // ─── COULEURS ──────────────────────────────────────────────────────────────
 const C = {
@@ -29,16 +31,8 @@ const Icon = ({ lib = 'FA5', name, size = 16, color = C.dark }) => {
   return null;
 };
 
-// ─── DONNÉES ──────────────────────────────────────────────────────────────
-const FILTER_TABS = [
-  { label: 'All Cases (24)', icon: 'briefcase', active: true,  color: C.white,    bg: C.primary  },
-  { label: 'Urgent (5)',     icon: 'fire',      active: false, color: C.red500,   bg: C.gray100  },
-  { label: 'Pending (8)',    icon: 'clock',     active: false, color: C.amber600, bg: C.gray100  },
-  { label: 'Closed (11)',    icon: 'check-circle', active: false, color: C.green600, bg: C.gray100 },
-];
-
-// ─── CASES avec les champs requis par CaseDetailsScreen ───────────────────
-const CASES = [
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _CASES_REF = [
   {
     id: 'CR-2024-1247', urgency: 'Urgent', urgencyIcon: 'fire',
     urgencyColor: C.red600, urgencyBg: C.red50, borderColor: C.red500,
@@ -314,198 +308,321 @@ const CASES = [
   },
 ];
 
-const CASE_TYPES = [
-  { color: C.red500,    label: 'Criminal Law',  count: '8 cases', pct: '33%' },
-  { color: C.secondary, label: 'Corporate Law', count: '6 cases', pct: '25%' },
-  { color: C.green600,  label: 'Family Law',    count: '5 cases', pct: '21%' },
-  { color: C.purple600, label: 'Other',         count: '5 cases', pct: '21%' },
-];
-
-const QUICK_FILTERS = [
-  { iconLib: 'FA5', iconName: 'fire',           iconColor: C.red600,    iconBg: C.red100,    title: 'Urgent Cases',  sub: 'Due soon',      count: '5', primary: true  },
-  { iconLib: 'FA5', iconName: 'gavel',          iconColor: C.primary,   iconBg: C.blue100,   title: 'In Court',      sub: 'Active trials', count: '7', primary: false },
-  { iconLib: 'FA5', iconName: 'handshake',      iconColor: C.purple600, iconBg: C.purple100, title: 'Mediation',     sub: 'In progress',   count: '3', primary: false },
-  { iconLib: 'FA5', iconName: 'file-signature', iconColor: C.green600,  iconBg: C.green100,  title: 'Awaiting Sign', sub: 'Documents',     count: '4', primary: false },
-];
-
-const ACTIVITY = [
-  { iconLib: 'FA5', iconName: 'file-alt',       iconColor: C.primary,   iconBg: C.blue100,   title: 'Document uploaded to case', desc: 'Motion to Dismiss added to State vs. Johnson',   time: '2 hours ago', tag: 'CR-2024-1247', tagColor: C.primary,   tagBg: C.blue50   },
-  { iconLib: 'FA5', iconName: 'user-plus',      iconColor: C.green600,  iconBg: C.green100,  title: 'New case created',          desc: 'Anderson IP Protection case opened',             time: '5 hours ago', tag: 'IP-2024-0567', tagColor: C.purple600, tagBg: C.purple50 },
-  { iconLib: 'FA5', iconName: 'calendar-check', iconColor: C.purple600, iconBg: C.purple100, title: 'Hearing scheduled',         desc: 'Court date set for Williams Personal Injury',    time: 'Yesterday',   tag: 'PI-2024-0678', tagColor: C.red600,   tagBg: C.red50    },
-  { iconLib: 'FA5', iconName: 'tasks',          iconColor: C.amber600,  iconBg: C.amber100,  title: 'Task completed',            desc: 'Contract review finalized for Mitchell Corp.',   time: 'Yesterday',   tag: 'CV-2024-0892', tagColor: C.amber600, tagBg: C.amber50  },
-];
-
 const AI_INSIGHTS = [
   { iconBg: C.red500,   icon: 'exclamation', title: 'Urgent Deadline Alert',  desc: 'Motion filing due in 3 hours for CR-2024-1247', btn: 'View Case'   },
   { iconBg: C.amber600, icon: 'lightbulb',   title: 'Document Missing',       desc: '3 cases need additional documentation',         btn: 'Review'      },
   { iconBg: C.green600, icon: 'chart-line',  title: 'Case Trend Analysis',    desc: 'Similar cases show 92% success rate',           btn: 'See Details' },
 ];
 
-const DEADLINES = [
-  { iconLib: 'FA5', iconName: 'exclamation-triangle', iconColor: C.red600,   title: 'Motion Filing',   subtitle: 'State vs. Johnson (CR-2024-1247)',        badge: 'Today',    badgeColor: C.white, badgeBg: C.red600,   time: '3 hours remaining', timeColor: C.red600,   border: C.red500,    btnBg: C.red600   },
-  { iconLib: 'FA5', iconName: 'file-signature',        iconColor: C.amber600, title: 'Contract Review', subtitle: 'Mitchell Corp. (CV-2024-0892)',            badge: 'Tomorrow', badgeColor: C.white, badgeBg: C.amber600, time: '1 day remaining',   timeColor: C.amber600, border: C.amber600,  btnBg: C.amber600 },
-  { iconLib: 'FA5', iconName: 'gavel',                 iconColor: C.blue600,  title: 'Court Hearing',   subtitle: 'Williams Personal Injury (PI-2024-0678)', badge: 'Mar 18',   badgeColor: C.white, badgeBg: C.blue600,  time: '2 days remaining',  timeColor: C.blue600,  border: C.secondary, btnBg: C.blue600  },
-];
 
-const BULK_ACTIONS = [
-  { iconLib: 'FA5', iconName: 'file-export', label: 'Export',  color: C.primary,   bg: C.blue50   },
-  { iconLib: 'FA5', iconName: 'tags',        label: 'Tag',     color: C.purple600, bg: C.purple50 },
-  { iconLib: 'FA5', iconName: 'archive',     label: 'Archive', color: C.green600,  bg: C.green50  },
-  { iconLib: 'FA5', iconName: 'share-alt',   label: 'Share',   color: C.amber600,  bg: C.amber50  },
-];
 
-// ─── helper : convertit un case de la liste vers le format CaseDetailsScreen ─
-const toCaseDetails = (c) => ({
-  id:          c.id,
-  title:       c.title,
-  subtitle:    c.subtitle,
-  type:        c.type,
-  phase:       c.phase,
-  priority:    c.priority,
-  status:      c.status,
-  filingDate:  c.filingDate,
-  court:       c.court,
-  judge:       c.judge,
-  prosecutor:  c.prosecutor,
-  attorney:    c.attorney,
-  caseValue:   c.caseValue,
-  description: c.description,
-  tags:        c.tags.map(t => t.label),
-  nextHearing: c.nextHearing,
-  stats:       {
-    docs:   parseInt(c.stats.find(s => s.label === 'Docs')?.val  || '0'),
-    tasks:  parseInt(c.stats.find(s => s.label === 'Tasks')?.val || '0'),
-    events: 3,
-    notes:  parseInt(c.stats.find(s => s.label === 'Notes')?.val || '0'),
-  },
-  timeTracking: { billable: 47.5, nonBillable: 12.3 },
-  client: c.clientData,
-  events: [
-    { id:1, icon:'gavel',          color:'#DC2626', bg:'#FEF2F2', title:'Court Hearing',     desc:'Scheduled hearing',     dateLabel: c.nextHearing?.label || 'TBD', time: c.nextHearing?.time || 'TBD', urgent: c.priority === 'urgent' },
-    { id:2, icon:'users',          color:'#1E40AF', bg:'#EFF6FF', title:'Client Meeting',    desc:'Strategy discussion',   dateLabel:'Tomorrow', time:'02:00 PM', urgent:false },
-    { id:3, icon:'file-signature', color:'#9333EA', bg:'#FAF5FF', title:'Document Deadline', desc:'Motion filing due',     dateLabel:'Mar 19',   time:'05:00 PM', urgent:false },
-  ],
-  documents: [
-    { id:1, icon:'file-pdf',   iconColor:'#fff', iconBg:'#DC2626', name:'Motion to Dismiss.pdf',  size:'2.4 MB', date:'2 hours ago', priority:true  },
-    { id:2, icon:'file-word',  iconColor:'#fff', iconBg:'#1E40AF', name:'Case Summary.docx',      size:'1.8 MB', date:'Yesterday',   priority:false },
-    { id:3, icon:'file-excel', iconColor:'#fff', iconBg:'#16A34A', name:'Evidence Log.xlsx',      size:'856 KB', date:'3 days ago',  priority:false },
-    { id:4, icon:'file-alt',   iconColor:'#fff', iconBg:'#9333EA', name:'Witness Statements.pdf', size:'3.1 MB', date:'5 days ago',  priority:false },
-  ],
-  tasks: [
-    { id:1, title:'File Motion to Dismiss',    due:'Due Today 5:00 PM',    dueColor:'#DC2626', priority:'urgent', assignee:'Lead Attorney', done:false },
-    { id:2, title:'Review Evidence Documents', due:'Due Tomorrow 3:00 PM', dueColor:'#D97706', priority:'medium', assignee:'Associate',     done:false },
-    { id:3, title:'Prepare Witness List',      due:'Due Mar 18',           dueColor:'#1E40AF', priority:'normal', assignee:'Paralegal',      done:false },
-    { id:4, title:'Draft Opening Statement',   due:'Completed',            dueColor:'#16A34A', priority:'normal', assignee:'Lead Attorney', done:true  },
-  ],
-  timeline: [
-    { id:1, icon:'gavel',    color:'#fff', bg:'#DC2626', title:'Court Hearing Scheduled',  desc:'Scheduled hearing — assigned courtroom',           time:'Upcoming',  badge:'Hearing',  badgeColor:'#DC2626', badgeBg:'#FEF2F2' },
-    { id:2, icon:'file-alt', color:'#fff', bg:'#1E40AF', title:'Motion to Dismiss Filed',  desc:'Defense motion filed with supporting documentation',time:'2 hrs ago', badge:'Document', badgeColor:'#1E40AF', badgeBg:'#EFF6FF' },
-    { id:3, icon:'users',    color:'#fff', bg:'#A855F7', title:'Client Meeting Completed', desc:'Strategy discussion and case review',               time:'Yesterday', badge:'Meeting',  badgeColor:'#9333EA', badgeBg:'#FAF5FF' },
-    { id:4, icon:'check',    color:'#fff', bg:'#16A34A', title:'Evidence Review Done',     desc:'All prosecution evidence reviewed and analyzed',    time:'2 days ago',badge:'Task',    badgeColor:'#16A34A', badgeBg:'#F0FDF4' },
-    { id:5, icon:'user-tie', color:'#fff', bg:'#D97706', title:'Expert Witness Deposition',desc:'Expert provided testimony on key evidence',         time:'3 days ago',badge:'Event',   badgeColor:'#D97706', badgeBg:'#FFFBEB' },
-  ],
-  notes: [
-    { id:1, author:'Lead Attorney',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', title:'Client Meeting Summary',    content:'Discussed case strategy and upcoming deadlines. Client is cooperative and prepared for all proceedings.', time:'2 hours ago', borderColor:'#D97706', bg:'#FFFBEB' },
-    { id:2, author:'Associate',      avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', title:'Evidence Analysis Notes',   content:'Evidence reviewed. Key findings documented. Potential procedural issues identified for further analysis.', time:'Yesterday',  borderColor:'#1E40AF', bg:'#EFF6FF' },
-    { id:3, author:'Research Team',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', title:'Legal Research Summary',    content:'Relevant case precedents identified. Strong support for defense arguments based on recent rulings.',         time:'2 days ago', borderColor:'#9333EA', bg:'#FAF5FF' },
-  ],
-});
+// ─── Map raw API case → CaseDetailsScreen format ────────────────────────────
+const rawToDetails = (raw) => {
+  const typeLabel = TYPE_LABEL[(raw.case_type || '').toUpperCase()] || raw.case_type || '';
+  const clientName = raw.client
+    ? `${raw.client.first_name ?? ''} ${raw.client.last_name ?? ''}`.trim()
+    : 'No Client';
+  const filingLabel = raw.filing_date
+    ? new Date(raw.filing_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : '—';
+  const hearingLabel = raw.first_hearing_date
+    ? new Date(raw.first_hearing_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : null;
+  return {
+    _id:         raw.id,          // UUID — used by CaseDetailsScreen to fetch sub-data
+    id:          raw.case_number,
+    title:       raw.title,
+    subtitle:    `${typeLabel} — ${(raw.status || '').replace(/_/g, ' ')}`,
+    type:        typeLabel,
+    phase:       (raw.status || '').replace(/_/g, ' '),
+    priority:    (raw.priority || 'NORMAL').toLowerCase(),
+    status:      raw.status,
+    filingDate:  raw.filing_date || '',
+    court:       raw.court_name       || '—',
+    judge:       raw.judge_name       || '—',
+    prosecutor:  raw.opposing_counsel || '—',
+    attorney:    '—',
+    caseValue:   raw.estimated_value ? `$${Number(raw.estimated_value).toLocaleString()}` : '—',
+    description: raw.description || '',
+    tags:        [typeLabel, (raw.status || '').replace(/_/g, ' ')].filter(Boolean),
+    nextHearing: hearingLabel
+      ? { label: hearingLabel, time: '—', room: '—', countdown: '—' }
+      : null,
+    stats:        { docs: 0, tasks: 0, events: 0, notes: 0 },
+    timeTracking: { billable: 0, nonBillable: 0 },
+    client: {
+      name:    clientName,
+      id:      raw.client?.id      || '—',
+      avatar:  null,
+      since:   filingLabel,
+      phone:   raw.client?.phone   || '—',
+      email:   raw.client?.email   || '—',
+      address: raw.client?.address || '—',
+      status:  'Active',
+      tier:    'Standard',
+    },
+  };
+};
+
+// ─── Activity helpers ─────────────────────────────────────────────────────
+const getActivityMeta = (action = '') => {
+  const a = action.toLowerCase();
+
+  // ── Calendar event types (checked first — most specific) ─────────────
+  if (a.includes('meeting scheduled'))
+    return { icon: 'user-friends',    color: C.indigo600, bg: C.indigo100 };
+  if (a.includes('consultation scheduled'))
+    return { icon: 'comments',        color: C.purple600, bg: C.purple100 };
+  if (a.includes('court hearing scheduled') || a.includes('court date scheduled'))
+    return { icon: 'gavel',           color: C.red600,    bg: C.red100    };
+  if (a.includes('deadline scheduled'))
+    return { icon: 'exclamation-circle', color: C.amber600, bg: C.amber100 };
+  if (a.includes('filing scheduled'))
+    return { icon: 'file-alt',        color: C.primary,   bg: C.blue100   };
+  if (a.includes('deposition scheduled'))
+    return { icon: 'microphone',      color: C.gray600,   bg: C.gray200   };
+  if (a.includes('mediation scheduled'))
+    return { icon: 'handshake',       color: C.green600,  bg: C.green100  };
+  if (a.includes('arbitration scheduled'))
+    return { icon: 'balance-scale',   color: C.amber600,  bg: C.amber100  };
+  if (a.includes('scheduled'))
+    return { icon: 'calendar-check',  color: C.primary,   bg: C.blue100   };
+
+  // ── Case timeline actions ─────────────────────────────────────────────
+  if (a.includes('document') || a.includes('upload') || a.includes('filed') || a.includes('motion'))
+    return { icon: 'file-alt',        color: C.primary,   bg: C.blue100   };
+  if (a.includes('task') || a.includes('completed') || a.includes('assigned'))
+    return { icon: 'tasks',           color: C.amber600,  bg: C.amber100  };
+  if (a.includes('hearing') || a.includes('court'))
+    return { icon: 'gavel',           color: C.red600,    bg: C.red100    };
+  if (a.includes('appeal'))
+    return { icon: 'gavel',           color: C.purple600, bg: C.purple100 };
+  if (a.includes('trial'))
+    return { icon: 'balance-scale',   color: C.red600,    bg: C.red100    };
+  if (a.includes('opened') || a.includes('creat') || a.includes('new case'))
+    return { icon: 'folder-plus',     color: C.green600,  bg: C.green100  };
+  if (a.includes('archived'))
+    return { icon: 'archive',         color: C.gray600,   bg: C.gray200   };
+  if (a.includes('settled'))
+    return { icon: 'handshake',       color: C.green600,  bg: C.green100  };
+  if (a.includes('closed'))
+    return { icon: 'check-circle',    color: C.green600,  bg: C.green100  };
+  if (a.includes('status') || a.includes('changed') || a.includes('updated'))
+    return { icon: 'exchange-alt',    color: C.blue600,   bg: C.blue100   };
+  if (a.includes('note') || a.includes('comment'))
+    return { icon: 'sticky-note',     color: C.purple600, bg: C.purple100 };
+  if (a.includes('client') || a.includes('meeting'))
+    return { icon: 'user-tie',        color: C.indigo600, bg: C.indigo100 };
+  return { icon: 'history',           color: C.primary,   bg: C.blue100   };
+};
+
+// ─── Format raw action strings from the database ──────────────────────────
+const ACTION_LABELS = {
+  'case created':              'Case opened',
+  'case archived':             'Case archived',
+  'case details updated':      'Case details updated',
+  'status changed to new':        'Status set to New',
+  'status changed to investigation': 'Under Investigation',
+  'status changed to pre_trial':  'Pre-Trial stage started',
+  'status changed to trial':      'Trial stage started',
+  'status changed to appeal':     'Appeal filed',
+  'status changed to settled':    'Case settled',
+  'status changed to closed':     'Case closed',
+};
+// Friendly labels for EventType enum values (used in old DB entries)
+const _EV_FRIENDLY = {
+  HEARING: 'Court Hearing', COURT_DATE: 'Court Date',
+  MEETING: 'Meeting', CONSULTATION: 'Consultation',
+  DEADLINE: 'Deadline', FILING: 'Filing',
+  DEPOSITION: 'Deposition', MEDIATION: 'Mediation',
+  ARBITRATION: 'Arbitration',
+};
+
+const formatAction = (raw = '') => {
+  if (!raw) return 'Activity recorded';
+  const key = raw.toLowerCase().trim();
+
+  // ── Exact match lookup ──────────────────────────────────────────────
+  if (ACTION_LABELS[key]) return ACTION_LABELS[key];
+
+  // ── Old DB format: "Event created: Title (EventType.X) (repeated Y)" ─
+  // or "Event created: Title (EventType.X)"
+  const legacyMatch = raw.match(
+    /^Event created:\s*(.+?)\s*\(EventType\.(\w+)\)(.*)?$/i
+  );
+  if (legacyMatch) {
+    const title      = legacyMatch[1].trim();
+    const evTypeKey  = legacyMatch[2].toUpperCase();
+    const extra      = (legacyMatch[3] || '').trim()
+                         .replace(/\(repeated\s+/i, '(repeats ');
+    const typeLabel  = _EV_FRIENDLY[evTypeKey]
+                    || evTypeKey.replace(/_/g, ' ');
+    return `${typeLabel} scheduled: ${title}${extra ? ' ' + extra : ''}`;
+  }
+
+  // ── Strip any remaining "EnumClass." prefix anywhere in the string ──
+  return raw
+    .replace(/\bEventType\./gi, '')
+    .replace(/\bCaseStatus\./gi, '')
+    .replace(/\bCasePriority\./gi, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim() || 'Activity recorded';
+};
+
+const getRelativeTime = (iso) => {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'Just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'Yesterday';
+  if (d < 7)  return `${d}d ago`;
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const getCountdown = (iso) => {
+  if (!iso) return null;
+  const diff = new Date(iso).getTime() - Date.now();
+  if (diff < 0) return { label: 'Passed', color: C.gray400 };
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return { label: `${m}m left`,       color: C.red600   };
+  const h = Math.floor(m / 60);
+  if (h < 24) return { label: `${h}h left`,       color: C.red600   };
+  const d = Math.floor(h / 24);
+  if (d === 1) return { label: 'Tomorrow',         color: C.amber600 };
+  if (d < 7)  return { label: `${d} days`,         color: C.amber600 };
+  return { label: `${d} days`, color: C.primary };
+};
 
 // ─── COMPOSANTS ───────────────────────────────────────────────────────────
-const SectionHeader = ({ title, action }) => (
-  <View style={s.sectionHeader}>
-    <Text style={s.sectionTitle}>{title}</Text>
-    {action && <TouchableOpacity><Text style={s.sectionAction}>{action}</Text></TouchableOpacity>}
-  </View>
-);
-
-const CaseCard = ({ item, onViewDetails }) => (
-  <View style={[s.card, { borderLeftWidth: 4, borderLeftColor: item.borderColor }]}>
-    {/* Header */}
-    <View style={[s.row, { justifyContent: 'space-between', marginBottom: 8 }]}>
-      <View style={s.row}>
-        <View style={s.caseIdBadge}><Text style={s.caseIdText}>{item.id}</Text></View>
-        <View style={[s.tag, { backgroundColor: item.urgencyBg, marginLeft: 6 }]}>
-          <View style={s.row}>
-            <Icon lib="FA5" name={item.urgencyIcon} size={10} color={item.urgencyColor} />
-            <Text style={[s.tagText, { color: item.urgencyColor, marginLeft: 4 }]}>{item.urgency}</Text>
+const CaseCard = ({ item, onViewDetails, onArchive, onUnarchive }) => {
+  const archived = item.isArchived;
+  return (
+    <View style={[
+      s.card,
+      { borderLeftWidth: 4, borderLeftColor: archived ? C.gray400 : item.borderColor },
+      archived && { backgroundColor: C.gray50 },
+    ]}>
+      {/* Header */}
+      <View style={[s.row, { justifyContent: 'space-between', marginBottom: 8 }]}>
+        <View style={s.row}>
+          <View style={[s.tag, { backgroundColor: archived ? C.gray100 : item.urgencyBg }]}>
+            <View style={s.row}>
+              <Icon lib="FA5" name={archived ? 'archive' : item.urgencyIcon} size={10} color={archived ? C.gray500 : item.urgencyColor} />
+              <Text style={[s.tagText, { color: archived ? C.gray500 : item.urgencyColor, marginLeft: 4 }]}>
+                {archived ? 'Archived' : item.urgency}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
-      <TouchableOpacity><Icon lib="FA5" name="ellipsis-v" size={16} color={C.gray400} /></TouchableOpacity>
-    </View>
-    <Text style={s.cardTitle}>{item.title}</Text>
-    <Text style={[s.cardSubtitle, { marginBottom: 8 }]}>{item.subtitle}</Text>
-    <View style={[s.row, { marginBottom: 12, flexWrap: 'wrap', gap: 6 }]}>
-      {item.tags.map((t, i) => (
-        <View key={i} style={[s.tag, { backgroundColor: t.bg }]}>
-          <Text style={[s.tagText, { color: t.color }]}>{t.label}</Text>
-        </View>
-      ))}
-    </View>
 
-    {/* Client row */}
-    <View style={[s.row, { justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.gray100 }]}>
-      <View style={s.row}>
-        <View style={[s.avatarMd, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: C.primary }}>
-            {item.client.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-          </Text>
-        </View>
-        <View style={{ marginLeft: 10 }}>
-          <Text style={s.clientName}>{item.client}</Text>
-          <Text style={s.clientSince}>Since: {item.clientSince}</Text>
-        </View>
-      </View>
-      <View style={s.row}>
-        {item.contacts.map((c, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[s.iconBtn, { backgroundColor: c.bg, marginLeft: 6 }]}
-            onPress={() => c.action && Linking.openURL(c.action)}
-          >
-            <Icon lib={c.lib} name={c.name} size={14} color={c.color} />
-          </TouchableOpacity>
+      <Text style={[s.cardTitle, archived && { color: C.gray500 }]}>{item.title}</Text>
+      <Text style={[s.cardSubtitle, { marginBottom: 8 }, archived && { color: C.gray400 }]}>{item.subtitle}</Text>
+      <View style={[s.row, { marginBottom: 12, flexWrap: 'wrap', gap: 6 }]}>
+        {item.tags.map((t, i) => (
+          <View key={i} style={[s.tag, { backgroundColor: archived ? C.gray100 : t.bg }]}>
+            <Text style={[s.tagText, { color: archived ? C.gray400 : t.color }]}>{t.label}</Text>
+          </View>
         ))}
       </View>
-    </View>
 
-    {/* Stats row */}
-    <View style={[s.row, { justifyContent: 'space-around', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.gray100 }]}>
-      {item.stats.map((st, i) => (
-        <View key={i} style={{ alignItems: 'center' }}>
-          <Text style={s.statLabel}>{st.label}</Text>
-          <Text style={[s.statVal, { color: st.valColor }]}>{st.val}</Text>
-        </View>
-      ))}
-    </View>
-
-    {/* Next event */}
-    <View style={[s.row, { justifyContent: 'space-between', marginBottom: 12 }]}>
-      <View style={s.row}>
-        <Icon lib="FA5" name="calendar" size={12} color={item.calColor} />
-        <Text style={[s.xs, { marginLeft: 6 }]}>{item.nextLabel}</Text>
-      </View>
-      <View style={[s.tag, { backgroundColor: item.timeLeftBg }]}>
+      {/* Client row */}
+      <View style={[s.row, { justifyContent: 'space-between', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.gray100 }]}>
         <View style={s.row}>
-          <Icon lib="FA5" name="clock" size={10} color={item.timeLeftColor} />
-          <Text style={[s.tagText, { color: item.timeLeftColor, marginLeft: 4 }]}>{item.timeLeft}</Text>
+          <View style={[s.avatarMd, { backgroundColor: archived ? C.gray200 : C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: archived ? C.gray500 : C.primary }}>
+              {item.client.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+            </Text>
+          </View>
+          <View style={{ marginLeft: 10 }}>
+            <Text style={[s.clientName, archived && { color: C.gray500 }]}>{item.client}</Text>
+            <Text style={s.clientSince}>Since: {item.clientSince}</Text>
+          </View>
+        </View>
+        {/* Boutons contact — désactivés si archivé */}
+        <View style={s.row}>
+          {item.contacts.map((c, i) => (
+            <TouchableOpacity
+              key={i}
+              disabled={archived}
+              style={[s.iconBtn, { backgroundColor: archived ? C.gray100 : c.bg, marginLeft: 6 }]}
+              onPress={() => !archived && c.action && Linking.openURL(c.action)}
+            >
+              <Icon lib={c.lib} name={c.name} size={14} color={archived ? C.gray400 : c.color} />
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
-    </View>
 
-    {/* Actions — View Details navigue vers CaseDetailsScreen */}
-    <View style={s.row}>
-      <TouchableOpacity style={s.btnPrimary} onPress={() => onViewDetails(item)}>
-        <Icon lib="FA5" name="eye" size={14} color={C.white} />
-        <Text style={[s.btnPrimaryText, { marginLeft: 6 }]}>View Details</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={[s.iconBtn, { backgroundColor: C.blue50, marginLeft: 8, width: 44, height: 44 }]}>
-        <Icon lib="FA5" name="robot" size={16} color={C.primary} />
-      </TouchableOpacity>
+      {/* Stats row */}
+      <View style={[s.row, { justifyContent: 'space-around', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.gray100 }]}>
+        {item.stats.map((st, i) => (
+          <View key={i} style={{ alignItems: 'center' }}>
+            <Text style={s.statLabel}>{st.label}</Text>
+            <Text style={[s.statVal, { color: archived ? C.gray400 : st.valColor }]}>{st.val}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Next event */}
+      <View style={[s.row, { justifyContent: 'space-between', marginBottom: 12 }]}>
+        <View style={s.row}>
+          <Icon lib="FA5" name="calendar" size={12} color={archived ? C.gray400 : item.calColor} />
+          <Text style={[s.xs, { marginLeft: 6, color: archived ? C.gray400 : undefined }]}>{item.nextLabel}</Text>
+        </View>
+        <View style={[s.tag, { backgroundColor: archived ? C.gray100 : item.timeLeftBg }]}>
+          <View style={s.row}>
+            <Icon lib="FA5" name="clock" size={10} color={archived ? C.gray400 : item.timeLeftColor} />
+            <Text style={[s.tagText, { color: archived ? C.gray400 : item.timeLeftColor, marginLeft: 4 }]}>{item.timeLeft}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={s.row}>
+        {/* View Details — désactivé si archivé */}
+        <TouchableOpacity
+          disabled={archived}
+          style={[s.btnPrimary, archived && { backgroundColor: C.gray200 }]}
+          onPress={() => !archived && onViewDetails(item)}
+        >
+          <Icon lib="FA5" name="eye" size={14} color={archived ? C.gray400 : C.white} />
+          <Text style={[s.btnPrimaryText, { marginLeft: 6 }, archived && { color: C.gray400 }]}>View Details</Text>
+        </TouchableOpacity>
+
+        {/* Archive / Restore */}
+        {archived ? (
+          <TouchableOpacity
+            style={[s.iconBtn, { backgroundColor: C.green50, marginLeft: 8, width: 44, height: 44 }]}
+            onPress={() => onUnarchive && onUnarchive(item)}
+          >
+            <Icon lib="FA5" name="box-open" size={15} color={C.green600} />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[s.iconBtn, { backgroundColor: C.red50, marginLeft: 8, width: 44, height: 44 }]}
+            onPress={() => onArchive && onArchive(item)}
+          >
+            <Icon lib="FA5" name="archive" size={15} color={C.red600} />
+          </TouchableOpacity>
+        )}
+
+        {/* AI — désactivé si archivé */}
+        <TouchableOpacity
+          disabled={archived}
+          style={[s.iconBtn, { backgroundColor: archived ? C.gray100 : C.blue50, marginLeft: 8, width: 44, height: 44 }]}
+        >
+          <Icon lib="FA5" name="robot" size={16} color={archived ? C.gray400 : C.primary} />
+        </TouchableOpacity>
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 // ─── Priority → visual meta ───────────────────────────────────────────────
 const PRIORITY_META = {
@@ -540,6 +657,23 @@ const TYPE_LABEL = {
   INSURANCE:       'Insurance',
 };
 
+// ─── EventType → friendly label ───────────────────────────────────────────
+const EVENT_TYPE_LABELS = {
+  HEARING:      'Court Hearing',
+  COURT_DATE:   'Court Date',
+  MEETING:      'Meeting',
+  CONSULTATION: 'Consultation',
+  DEADLINE:     'Deadline',
+  FILING:       'Filing',
+  DEPOSITION:   'Deposition',
+  MEDIATION:    'Mediation',
+  ARBITRATION:  'Arbitration',
+  OTHER:        'Other Event',
+};
+const formatEventType = (raw = '') =>
+  EVENT_TYPE_LABELS[(raw || '').toUpperCase()] ||
+  raw.replace(/^EventType\./i, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+
 // ─── Filter config ─────────────────────────────────────────────────────────
 const FILTER_CONFIG = [
   { key: 'all',    label: 'All Cases',  icon: 'briefcase',    filter: () => true },
@@ -562,10 +696,21 @@ const toCardFormat = (c) => {
     ? new Date(c.first_hearing_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : null;
 
+  const isArchived = ['SETTLED', 'CLOSED'].includes((c.status || '').toUpperCase());
+
   return {
     _raw:         c,
     id:           c.case_number,
+    isArchived,
     ...pm,
+    // Grey out priority visuals for archived cases
+    ...(isArchived ? {
+      urgency:      'Archived',
+      urgencyIcon:  'archive',
+      urgencyColor: C.gray500,
+      urgencyBg:    C.gray100,
+      borderColor:  C.gray400,
+    } : {}),
     title:        c.title,
     subtitle:     `${typeLabel} — ${c.status.replace('_', ' ')}`,
     tags: [
@@ -622,11 +767,15 @@ const toCardFormat = (c) => {
 // ─── ÉCRAN ─────────────────────────────────────────────────────────────────
 export default function CaseManagement({ navigation }) {
   const [selectedCase,     setSelectedCase]     = useState(null);
+  const [showAddCase,      setShowAddCase]      = useState(false);
   const [cases,            setCases]            = useState([]);
   const [loading,          setLoading]          = useState(true);
+  const [refreshing,       setRefreshing]       = useState(false);
+  const [activity,         setActivity]         = useState([]);
+  const [deadlines,        setDeadlines]        = useState([]);
   const [searchText,       setSearchText]       = useState('');
   const [activeFilter,     setActiveFilter]     = useState('all');
-  const [typeFilter,       setTypeFilter]       = useState(null);   // e.g. 'CRIMINAL'
+  const [typeFilter,       setTypeFilter]       = useState(null);
   const [sortOrder,        setSortOrder]        = useState('newest');
   const [showFilterPanel,  setShowFilterPanel]  = useState(false);
   const [showSortPanel,    setShowSortPanel]    = useState(false);
@@ -643,7 +792,79 @@ export default function CaseManagement({ navigation }) {
     }
   }, []);
 
-  useEffect(() => { loadCases(); }, [loadCases]);
+  const loadActivity = useCallback(async () => {
+    try {
+      const data = await dashboardAPI.recentActivity();
+      setActivity(Array.isArray(data) ? data : []);
+    } catch {
+      setActivity([]);
+    }
+  }, []);
+
+  const loadDeadlines = useCallback(async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const data = await calendarAPI.listEvents({ from_date: today });
+      // Keep only the next 5 upcoming events
+      setDeadlines(Array.isArray(data) ? data.slice(0, 5) : []);
+    } catch {
+      setDeadlines([]);
+    }
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadCases(), loadActivity(), loadDeadlines()]);
+    setRefreshing(false);
+  }, [loadCases, loadActivity, loadDeadlines]);
+
+  const handleArchive = useCallback(async (cardItem) => {
+    Alert.alert(
+      'Archive Case',
+      `Are you sure you want to archive "${cardItem.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive', style: 'destructive',
+          onPress: async () => {
+            try {
+              await casesAPI.archive(cardItem._raw.id);
+              loadCases();
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Could not archive case.');
+            }
+          },
+        },
+      ]
+    );
+  }, [loadCases]);
+
+  const handleUnarchive = useCallback(async (cardItem) => {
+    Alert.alert(
+      'Restore Case',
+      `Restore "${cardItem.title}" to active?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          onPress: async () => {
+            try {
+              await casesAPI.updateStatus(cardItem._raw.id, 'NEW');
+              loadCases();
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Could not restore case.');
+            }
+          },
+        },
+      ]
+    );
+  }, [loadCases]);
+
+  useEffect(() => {
+    loadCases();
+    loadActivity();
+    loadDeadlines();
+  }, [loadCases, loadActivity, loadDeadlines]);
 
   // ── Count per type (for filter panel badges) ─────────────────────────
   const typeCountMap2 = {};
@@ -711,6 +932,19 @@ export default function CaseManagement({ navigation }) {
     }));
   const urgentCount = tabCounts.urgent;
   const closedCount = tabCounts.closed;
+  const activeCount = tabCounts.active;
+  const totalCount  = cases.length;
+
+  // Afficher AddCaseScreen en plein écran (inline)
+  if (showAddCase) {
+    return (
+      <AddCaseScreen
+        navigation={{
+          goBack: () => { setShowAddCase(false); loadCases(); },
+        }}
+      />
+    );
+  }
 
   // Si un case est sélectionné, on affiche CaseDetailsScreen
   if (selectedCase) {
@@ -723,7 +957,7 @@ export default function CaseManagement({ navigation }) {
   }
 
   const handleViewDetails = (cardItem) => {
-    setSelectedCase(toCaseDetails(cardItem));
+    setSelectedCase(rawToDetails(cardItem._raw));
   };
 
   return (
@@ -744,7 +978,7 @@ export default function CaseManagement({ navigation }) {
           </View>
           <TouchableOpacity
             style={[s.backBtn, { backgroundColor: 'rgba(255,255,255,0.25)' }]}
-            onPress={() => navigation?.navigate?.('AddCase', { onCreated: loadCases })}
+            onPress={() => setShowAddCase(true)}
           >
             <Icon lib="FA5" name="plus" size={18} color={C.white} />
           </TouchableOpacity>
@@ -766,7 +1000,14 @@ export default function CaseManagement({ navigation }) {
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={{ paddingBottom: 90 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[C.primary]} tintColor={C.primary} />
+        }
+      >
 
         {/* FILTER TABS */}
         <View style={s.section}>
@@ -955,7 +1196,7 @@ export default function CaseManagement({ navigation }) {
             </View>
           )}
           {!loading && displayCases.map((c, i) => (
-            <CaseCard key={c._raw?.id ?? i} item={c} onViewDetails={handleViewDetails} />
+            <CaseCard key={c._raw?.id ?? i} item={c} onViewDetails={handleViewDetails} onArchive={handleArchive} onUnarchive={handleUnarchive} />
           ))}
         </View>
 
@@ -983,8 +1224,28 @@ export default function CaseManagement({ navigation }) {
               </View>
             ))}
           </View>
+          {/* Row 1 */}
           <View style={s.statsRow}>
-            <View style={[s.statMiniCard, { marginRight: 8 }]}>
+            <View style={[s.statMiniCard, { flex: 1, marginRight: 8 }]}>
+              <View style={[s.statMiniIcon, { backgroundColor: C.primary }]}>
+                <Icon lib="FA5" name="briefcase" size={20} color={C.white} />
+              </View>
+              <Text style={s.statMiniCount}>{totalCount}</Text>
+              <Text style={s.statMiniLabel}>Total Cases</Text>
+              <Text style={s.statMiniSub}>All dossiers</Text>
+            </View>
+            <View style={[s.statMiniCard, { flex: 1 }]}>
+              <View style={[s.statMiniIcon, { backgroundColor: C.blue600 }]}>
+                <Icon lib="FA5" name="folder-open" size={20} color={C.white} />
+              </View>
+              <Text style={s.statMiniCount}>{activeCount}</Text>
+              <Text style={s.statMiniLabel}>Active</Text>
+              <Text style={[s.statMiniSub, { color: C.blue600 }]}>Not archived</Text>
+            </View>
+          </View>
+          {/* Row 2 */}
+          <View style={[s.statsRow, { marginTop: 8 }]}>
+            <View style={[s.statMiniCard, { flex: 1, marginRight: 8 }]}>
               <View style={[s.statMiniIcon, { backgroundColor: C.green600 }]}>
                 <Icon lib="FA5" name="check-circle" size={20} color={C.white} />
               </View>
@@ -992,39 +1253,89 @@ export default function CaseManagement({ navigation }) {
               <Text style={s.statMiniLabel}>Closed</Text>
               <Text style={s.statMiniSub}>Settled or closed</Text>
             </View>
-            <View style={s.statMiniCard}>
+            <View style={[s.statMiniCard, { flex: 1 }]}>
               <View style={[s.statMiniIcon, { backgroundColor: C.red600 }]}>
                 <Icon lib="FA5" name="fire" size={20} color={C.white} />
               </View>
               <Text style={s.statMiniCount}>{urgentCount}</Text>
               <Text style={s.statMiniLabel}>Urgent</Text>
-              <Text style={[s.statMiniSub, { color: C.red600 }]}>High priority cases</Text>
+              <Text style={[s.statMiniSub, { color: C.red600 }]}>High priority</Text>
             </View>
           </View>
         </View>
 
         {/* RECENT ACTIVITY */}
-        <View style={[s.section, { backgroundColor: C.gray50 }]}>
-          <SectionHeader title="Recent Activity" action="View All" />
-          {ACTIVITY.map((a, i) => (
-            <View key={i} style={s.card}>
-              <View style={s.row}>
-                <View style={[s.activityIcon, { backgroundColor: a.iconBg }]}>
-                  <Icon lib={a.iconLib} name={a.iconName} size={16} color={a.iconColor} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={s.smBold}>{a.title}</Text>
-                  <Text style={[s.xs, { marginVertical: 4 }]}>{a.desc}</Text>
-                  <View style={[s.row, { justifyContent: 'space-between' }]}>
-                    <Text style={s.gray400xs}>{a.time}</Text>
-                    <View style={[s.tag, { backgroundColor: a.tagBg }]}>
-                      <Text style={[s.tagText, { color: a.tagColor }]}>{a.tag}</Text>
-                    </View>
-                  </View>
-                </View>
+        <View style={act.section}>
+          {/* Header */}
+          <View style={act.header}>
+            <View style={act.headerLeft}>
+              <View style={act.sectionIconWrap}>
+                <Icon lib="FA5" name="history" size={15} color={C.primary} />
+              </View>
+              <View>
+                <Text style={act.headerTitle}>Recent Activity</Text>
+                <Text style={act.headerSub}>
+                  {activity.length > 0 ? `${activity.length} recent event${activity.length !== 1 ? 's' : ''}` : 'Up to date'}
+                </Text>
               </View>
             </View>
-          ))}
+            <View style={act.headerRight}>
+              <View style={act.liveWrap}>
+                <View style={act.liveDot} />
+                <Text style={act.liveText}>LIVE</Text>
+              </View>
+              <TouchableOpacity style={act.viewAllBtn} onPress={() => navigation?.navigate?.('Calendar')}>
+                <Text style={act.viewAllText}>View All</Text>
+                <Icon lib="FA5" name="chevron-right" size={10} color={C.primary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Feed */}
+          <View style={act.feed}>
+            {activity.length === 0 ? (
+              <View style={act.emptyWrap}>
+                <View style={act.emptyIcon}>
+                  <Icon lib="FA5" name="inbox" size={26} color={C.gray400} />
+                </View>
+                <Text style={act.emptyTitle}>No recent activity</Text>
+                <Text style={act.emptySub}>Actions on cases will appear here</Text>
+              </View>
+            ) : activity.map((a, i) => {
+              const meta    = getActivityMeta(a.action);
+              const relTime = getRelativeTime(a.created_at);
+              const cf      = a.case_file;
+              const isLast  = i === activity.length - 1;
+              return (
+                <View key={a.id ?? i} style={[act.card, !isLast && act.cardDivider]}>
+                  {/* Colored icon square */}
+                  <View style={[act.iconWrap, { backgroundColor: meta.bg }]}>
+                    <Icon lib="FA5" name={meta.icon} size={16} color={meta.color} />
+                  </View>
+
+                  {/* Body */}
+                  <View style={act.body}>
+                    {/* Row 1 — action + time pill */}
+                    <View style={act.bodyTop}>
+                      <Text style={act.action} numberOfLines={2}>{formatAction(a.action)}</Text>
+                      <View style={[act.timePill, { backgroundColor: meta.bg }]}>
+                        <Icon lib="FA5" name="clock" size={8} color={meta.color} />
+                        <Text style={[act.timeText, { color: meta.color }]}>{relTime}</Text>
+                      </View>
+                    </View>
+
+                    {/* Row 2 — linked case pill */}
+                    {cf && (
+                      <View style={act.casePill}>
+                        <Icon lib="FA5" name="folder-open" size={9} color={C.primary} />
+                        <Text style={act.casePillText} numberOfLines={1}>{cf.title}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
         </View>
 
         {/* AI INSIGHTS */}
@@ -1061,53 +1372,100 @@ export default function CaseManagement({ navigation }) {
           </View>
         </View>
 
-        {/* UPCOMING DEADLINES */}
-        <View style={s.section}>
-          <SectionHeader title="Upcoming Deadlines" action="Calendar View" />
-          {DEADLINES.map((d, i) => (
-            <View key={i} style={[s.deadlineCard, { borderLeftColor: d.border }]}>
-              <View style={[s.row, { justifyContent: 'space-between', marginBottom: 6 }]}>
-                <View style={s.row}>
-                  <Icon lib={d.iconLib} name={d.iconName} size={13} color={d.iconColor} />
-                  <Text style={[s.smBold, { marginLeft: 8 }]}>{d.title}</Text>
-                </View>
-                <View style={[s.tag, { backgroundColor: d.badgeBg }]}>
-                  <Text style={[s.tagText, { color: d.badgeColor }]}>{d.badge}</Text>
-                </View>
+        {/* UPCOMING EVENTS */}
+        <View style={[s.section, { paddingHorizontal: 0, paddingVertical: 0, backgroundColor: C.white }]}>
+          {/* Header */}
+          <View style={ev.header}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={ev.headerIcon}>
+                <Icon lib="FA5" name="calendar-alt" size={16} color={C.white} />
               </View>
-              <Text style={[s.xs, { marginBottom: 10 }]}>{d.subtitle}</Text>
-              <View style={[s.row, { justifyContent: 'space-between' }]}>
-                <View style={s.row}>
-                  <Icon lib="FA5" name="clock" size={12} color={d.timeColor} />
-                  <Text style={[s.smBold, { color: d.timeColor, marginLeft: 6 }]}>{d.time}</Text>
-                </View>
-                <TouchableOpacity style={[s.deadlineBtn, { backgroundColor: d.btnBg }]}>
-                  <Text style={s.deadlineBtnText}>View</Text>
-                </TouchableOpacity>
+              <View>
+                <Text style={ev.headerTitle}>Upcoming Events</Text>
+                <Text style={ev.headerSub}>
+                  {deadlines.length > 0 ? `${deadlines.length} scheduled` : 'No events'}
+                </Text>
               </View>
             </View>
-          ))}
-        </View>
+            <TouchableOpacity style={ev.calBtn} onPress={() => navigation?.navigate?.('Calendar')}>
+              <Icon lib="FA5" name="calendar" size={11} color={C.primary} />
+              <Text style={ev.calBtnText}>Calendar</Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* BULK ACTIONS */}
-        <View style={[s.section, { backgroundColor: C.blue50 }]}>
-          <Text style={[s.sectionTitle, { marginBottom: 14 }]}>Bulk Actions</Text>
-          <View style={s.card}>
-            <View style={[s.row, { justifyContent: 'space-between', marginBottom: 14 }]}>
-              <View style={s.row}>
-                <View style={s.checkbox} />
-                <Text style={s.smBold}>Select All Cases</Text>
+          {/* Cards */}
+          <View style={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14 }}>
+            {deadlines.length === 0 ? (
+              <View style={ev.emptyWrap}>
+                <View style={ev.emptyIcon}>
+                  <Icon lib="FA5" name="calendar-check" size={24} color={C.gray400} />
+                </View>
+                <Text style={ev.emptyTitle}>Calendar is clear</Text>
+                <Text style={ev.emptySub}>No upcoming events scheduled</Text>
               </View>
-              <Text style={s.xs}>0 selected</Text>
-            </View>
-            <View style={s.bulkGrid}>
-              {BULK_ACTIONS.map((b, i) => (
-                <TouchableOpacity key={i} style={[s.bulkBtn, { backgroundColor: b.bg }]}>
-                  <Icon lib={b.iconLib} name={b.iconName} size={16} color={b.color} />
-                  <Text style={[s.smBold, { color: b.color, marginLeft: 8 }]}>{b.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            ) : deadlines.map((d, i) => {
+              const isHearing  = d.event_type === 'HEARING' || d.event_type === 'COURT_DATE';
+              const isDeadline = d.event_type === 'DEADLINE';
+              const isMeeting  = d.event_type === 'MEETING' || d.event_type === 'CONSULTATION';
+              const accent     = isHearing ? C.red600    : isDeadline ? C.amber600  : isMeeting ? C.purple600 : C.primary;
+              const accentBg   = isHearing ? C.red50     : isDeadline ? C.amber50   : isMeeting ? C.purple50  : C.blue50;
+              const iconName   = isHearing ? 'gavel'     : isDeadline ? 'exclamation-circle' : isMeeting ? 'users' : 'calendar-check';
+              const typeLabel  = formatEventType(d.event_type);
+              const dt         = d.start_datetime ? new Date(d.start_datetime) : null;
+              const dayNum     = dt ? dt.getDate() : '—';
+              const monthStr   = dt ? dt.toLocaleDateString('en-US', { month: 'short' }).toUpperCase() : '';
+              const timeStr    = dt ? dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
+              const countdown  = getCountdown(d.start_datetime);
+
+              return (
+                <View key={d.id ?? i} style={[ev.card, { borderLeftColor: accent }]}>
+                  {/* Date column */}
+                  <View style={[ev.dateBadge, { backgroundColor: accent }]}>
+                    <Text style={ev.dateDay}>{dayNum}</Text>
+                    <Text style={ev.dateMonth}>{monthStr}</Text>
+                  </View>
+
+                  {/* Main content */}
+                  <View style={{ flex: 1, marginLeft: 14 }}>
+                    {/* Row 1: type badge + countdown */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <View style={[ev.typeBadge, { backgroundColor: accentBg }]}>
+                        <Icon lib="FA5" name={iconName} size={9} color={accent} />
+                        <Text style={[ev.typeText, { color: accent }]}>{typeLabel}</Text>
+                      </View>
+                      {countdown && (
+                        <View style={[ev.countdownBadge, { backgroundColor: accentBg }]}>
+                          <Icon lib="FA5" name="clock" size={9} color={countdown.color} />
+                          <Text style={[ev.countdownText, { color: countdown.color }]}>{countdown.label}</Text>
+                        </View>
+                      )}
+                    </View>
+                    {/* Row 2: title */}
+                    <Text style={ev.evTitle} numberOfLines={1}>{d.title}</Text>
+                    {/* Row 3: time + location */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 6 }}>
+                      {timeStr ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Icon lib="FA5" name="clock" size={10} color={C.gray400} />
+                          <Text style={ev.evMeta}>{timeStr}</Text>
+                        </View>
+                      ) : null}
+                      {d.location ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
+                          <Icon lib="FA5" name="map-marker-alt" size={10} color={C.gray400} />
+                          <Text style={ev.evMeta} numberOfLines={1}>{d.location}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  {/* Arrow */}
+                  <TouchableOpacity style={[ev.arrowBtn, { backgroundColor: accentBg }]}>
+                    <Icon lib="FA5" name="chevron-right" size={12} color={accent} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
           </View>
         </View>
 
@@ -1162,7 +1520,8 @@ const s = StyleSheet.create({
   viewToggle: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   progressBg: { height: 8, backgroundColor: C.gray100, borderRadius: 4 },
   progressFill: { height: 8, borderRadius: 4 },
-  statsRow: { flexDirection: 'row' },
+  statsRow:  { flexDirection: 'row' },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   statMiniCard: { flex: 1, backgroundColor: C.white, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: C.gray100 },
   statMiniIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   statMiniCount: { fontSize: 22, fontWeight: '800', color: C.dark, marginBottom: 2 },
@@ -1194,7 +1553,7 @@ const s = StyleSheet.create({
   // ── Filter / Sort panels ─────────────────────────────────────────────
   filterPanel: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.gray200 },
   typeChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: C.gray300, backgroundColor: C.white },
+  typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: C.gray200, backgroundColor: C.white },
   typeChipActive: { backgroundColor: C.primary, borderColor: C.primary },
   typeChipDim: { borderColor: C.gray200, backgroundColor: C.gray50 },
   typeChipText: { fontSize: 13, fontWeight: '600', color: C.dark },
@@ -1202,4 +1561,77 @@ const s = StyleSheet.create({
   typeChipBadgeText: { fontSize: 11, fontWeight: '700', color: C.primary },
   sortOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4 },
   sortOptionActive: { backgroundColor: C.blue50 },
+});
+
+// ─── RECENT ACTIVITY styles ───────────────────────────────────────────────
+const act = StyleSheet.create({
+  // — Section wrapper
+  section:        { backgroundColor: C.white, marginBottom: 0 },
+
+  // — Header
+  header:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: C.gray100 },
+  headerLeft:     { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerRight:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sectionIconWrap:{ width: 40, height: 40, borderRadius: 12, backgroundColor: C.blue50, alignItems: 'center', justifyContent: 'center' },
+  headerTitle:    { fontSize: 16, fontWeight: '800', color: C.dark },
+  headerSub:      { fontSize: 11, color: C.gray400, marginTop: 1 },
+  liveWrap:       { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  liveDot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: C.green600 },
+  liveText:       { fontSize: 9, fontWeight: '800', color: C.green600, letterSpacing: 0.5 },
+  viewAllBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blue50, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  viewAllText:    { fontSize: 12, fontWeight: '700', color: C.primary },
+
+  // — Feed list
+  feed:           { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
+
+  // — Each activity card row
+  card:           { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 14, paddingHorizontal: 4, gap: 14 },
+  cardDivider:    { borderBottomWidth: 1, borderBottomColor: C.gray100 },
+
+  // — Left icon
+  iconWrap:       { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+
+  // — Body
+  body:           { flex: 1 },
+  bodyTop:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  action:         { fontSize: 13, fontWeight: '700', color: C.dark, lineHeight: 19, flex: 1 },
+
+  // — Time pill (inherits color from activity)
+  timePill:       { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, flexShrink: 0 },
+  timeText:       { fontSize: 10, fontWeight: '800' },
+
+  // — Linked case pill
+  casePill:       { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7, backgroundColor: C.blue50, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, alignSelf: 'flex-start', maxWidth: '95%' },
+  casePillText:   { fontSize: 11, fontWeight: '600', color: C.primary },
+
+  // — Empty state
+  emptyWrap:      { alignItems: 'center', paddingVertical: 32 },
+  emptyIcon:      { width: 58, height: 58, borderRadius: 18, backgroundColor: C.gray100, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyTitle:     { fontSize: 14, fontWeight: '700', color: C.gray500 },
+  emptySub:       { fontSize: 12, color: C.gray400, marginTop: 4 },
+});
+
+// ─── UPCOMING EVENTS styles ───────────────────────────────────────────────
+const ev = StyleSheet.create({
+  header:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: C.gray100 },
+  headerIcon:    { width: 38, height: 38, borderRadius: 11, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  headerTitle:   { fontSize: 17, fontWeight: '800', color: C.dark },
+  headerSub:     { fontSize: 12, color: C.gray500, marginTop: 1 },
+  calBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.blue50, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: C.blue100 },
+  calBtnText:    { fontSize: 12, fontWeight: '700', color: C.primary },
+  card:          { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderRadius: 18, padding: 14, marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: C.gray100, borderLeftWidth: 4 },
+  dateBadge:     { width: 50, height: 58, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  dateDay:       { fontSize: 22, fontWeight: '900', color: C.white, lineHeight: 24 },
+  dateMonth:     { fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.85)', letterSpacing: 0.8 },
+  typeBadge:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  typeText:      { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
+  countdownBadge:{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  countdownText: { fontSize: 10, fontWeight: '800' },
+  evTitle:       { fontSize: 14, fontWeight: '800', color: C.dark },
+  evMeta:        { fontSize: 11, color: C.gray500, fontWeight: '500' },
+  arrowBtn:      { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginLeft: 8, flexShrink: 0 },
+  emptyWrap:     { alignItems: 'center', paddingVertical: 28 },
+  emptyIcon:     { width: 58, height: 58, borderRadius: 18, backgroundColor: C.gray100, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyTitle:    { fontSize: 14, fontWeight: '700', color: C.gray500 },
+  emptySub:      { fontSize: 12, color: C.gray400, marginTop: 4 },
 });

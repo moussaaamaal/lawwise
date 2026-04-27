@@ -1,14 +1,30 @@
 import uuid
+import re
+import unicodedata
+import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.core.dependencies import get_lawyer, get_current_user
-from app.core.database import supabase
+from app.core.database import supabase, supabase_admin
 from app.core.config import settings
 from app.models.enums import DocumentCategory, DocumentStatus
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
 # ─── Helpers ────────────────────────────────────────────
+
+def _sanitize_filename(filename: str) -> str:
+    """Remove accents, replace spaces and special chars with underscores."""
+    # Decompose accented characters then strip the accent marks
+    normalized = unicodedata.normalize("NFKD", filename)
+    ascii_name  = normalized.encode("ascii", "ignore").decode("ascii")
+    # Replace anything that's not alphanumeric, dot, dash, or underscore
+    safe = re.sub(r"[^\w.\-]", "_", ascii_name)
+    # Collapse consecutive underscores
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    return safe or "file"
 
 def _detect_file_type(filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower()
@@ -58,23 +74,41 @@ async def upload_document(
     current_user=Depends(get_lawyer)
 ):
     file_content = await file.read()
-    file_name    = file.filename
-    file_type    = _detect_file_type(file_name)
+    file_name    = file.filename or "upload"
+    safe_name    = _sanitize_filename(file_name)
+    file_type    = _detect_file_type(safe_name)
+    content_type = file.content_type or "application/octet-stream"
 
-    storage_path = f"{current_user['firm_id']}/{case_id}/{uuid.uuid4()}_{file_name}"
-    supabase.storage.from_("documents").upload(storage_path, file_content)
-    storage_url = supabase.storage.from_("documents").get_public_url(storage_path)
+    # Ensure bucket exists (create if missing)
+    try:
+        supabase_admin.storage.create_bucket("documents", options={"public": True})
+        logger.info("Storage bucket 'documents' created successfully")
+    except Exception as e:
+        err = str(e).lower()
+        logger.info(f"create_bucket result: {e!r}")
+        # Ignore if bucket already exists (various error formats from Supabase)
+        if not any(k in err for k in ("already exists", "409", "duplicate", "already_exists", "violates unique")):
+            logger.error(f"Storage bucket creation failed: {e!r}")
+            raise HTTPException(status_code=500, detail=f"Storage setup failed: {e}")
+
+    storage_path = f"{current_user['firm_id']}/{case_id}/{uuid.uuid4()}_{safe_name}"
+    supabase_admin.storage.from_("documents").upload(
+        storage_path,
+        file_content,
+        file_options={"content-type": content_type},
+    )
+    storage_url = supabase_admin.storage.from_("documents").get_public_url(storage_path)
 
     result = supabase.table("document").insert({
-        "firm_id":     current_user["firm_id"],
-        "case_id":     case_id,
-        "uploaded_by": current_user["id"],
-        "file_name":   file_name,
-        "file_type":   file_type,
+        "firm_id":      current_user["firm_id"],
+        "case_id":      case_id,
+        "uploaded_by":  current_user["id"],
+        "file_name":    file_name,   # nom original affiché à l'utilisateur
+        "file_type":    file_type,
         "file_size_mb": round(len(file_content) / (1024 * 1024), 4),
-        "storage_url": storage_url,
-        "category":    DocumentCategory.OTHER,
-        "status":      DocumentStatus.PENDING_REVIEW,
+        "storage_url":  storage_url,
+        "category":     DocumentCategory.OTHER,
+        "status":       DocumentStatus.PENDING_REVIEW,
     }).execute()
 
     supabase.table("case_timeline").insert({
@@ -99,8 +133,8 @@ async def upload_voice_note(
     file_name     = file.filename
 
     storage_path = f"{current_user['firm_id']}/{case_id}/voice/{uuid.uuid4()}_{file_name}"
-    supabase.storage.from_("documents").upload(storage_path, audio_content)
-    storage_url = supabase.storage.from_("documents").get_public_url(storage_path)
+    supabase_admin.storage.from_("documents").upload(storage_path, audio_content)
+    storage_url = supabase_admin.storage.from_("documents").get_public_url(storage_path)
 
     # Save the audio file record
     doc = supabase.table("document").insert({

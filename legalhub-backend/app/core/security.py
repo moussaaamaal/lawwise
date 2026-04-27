@@ -1,21 +1,19 @@
 from datetime import datetime, timedelta
 import hashlib, base64
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def _pre_hash(password: str) -> str:
-    """SHA-256 pre-hash to bypass bcrypt's 72-byte limit."""
+def _pre_hash(password: str) -> bytes:
+    """SHA-256 pre-hash → 44-byte base64 string, safely within bcrypt's 72-byte limit."""
     digest = hashlib.sha256(password.encode("utf-8")).digest()
-    return base64.b64encode(digest).decode("utf-8")
+    return base64.b64encode(digest)
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(_pre_hash(password))
+    return bcrypt.hashpw(_pre_hash(password), bcrypt.gensalt()).decode("utf-8")
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(_pre_hash(plain), hashed)
+    return bcrypt.checkpw(_pre_hash(plain), hashed.encode("utf-8"))
 
 def create_access_token(data: dict) -> str:
     payload = data.copy()

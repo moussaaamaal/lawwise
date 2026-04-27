@@ -1,42 +1,65 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, TextInput,
-  StyleSheet, SafeAreaView, StatusBar, Image, Dimensions,
+  View, Text, ScrollView, TouchableOpacity, TextInput, Alert,
+  StyleSheet, SafeAreaView, StatusBar, Image, Dimensions, ActivityIndicator,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { casesAPI, tasksAPI, documentsAPI, notesAPI, calendarAPI, billingAPI } from '../../services/api';
+import * as DocumentPicker from 'expo-document-picker';
+import * as WebBrowser from 'expo-web-browser';
+import { Linking } from 'react-native';
 
 const { width: W } = Dimensions.get('window');
 
 // ─── PALETTE ──────────────────────────────────────────────────────────────────
 const C = {
-  primary:   '#1E40AF',
-  secondary: '#3B82F6',
-  dark:      '#1E293B',
-  white:     '#FFFFFF',
-  g50:       '#F9FAFB',
-  g100:      '#F3F4F6',
-  g200:      '#E5E7EB',
-  g400:      '#9CA3AF',
-  g500:      '#6B7280',
-  g600:      '#4B5563',
-  red50:     '#FEF2F2',
-  red100:    '#FEE2E2',
-  red500:    '#EF4444',
-  red600:    '#DC2626',
-  amber50:   '#FFFBEB',
-  amber100:  '#FEF3C7',
-  amber600:  '#D97706',
-  green50:   '#F0FDF4',
-  green100:  '#DCFCE7',
-  green600:  '#16A34A',
-  blue50:    '#EFF6FF',
-  blue100:   '#DBEAFE',
-  purple50:  '#FAF5FF',
-  purple100: '#F3E8FF',
-  purple500: '#A855F7',
-  purple600: '#9333EA',
-  indigo600: '#4F46E5',
-  teal600:   '#0D9488',
+  primary:     '#1E40AF',
+  secondary:   '#3B82F6',
+  dark:        '#1E293B',
+  white:       '#FFFFFF',
+  bg:          '#EEF2F7',
+
+  slate900:    '#0F172A',
+  slate800:    '#1E293B',
+  slate700:    '#334155',
+
+  g50:         '#F9FAFB',
+  g100:        '#F3F4F6',
+  g200:        '#E5E7EB',
+  g300:        '#D1D5DB',
+  g400:        '#9CA3AF',
+  g500:        '#6B7280',
+  g600:        '#4B5563',
+
+  red50:       '#FEF2F2',
+  red100:      '#FEE2E2',
+  red500:      '#EF4444',
+  red600:      '#DC2626',
+
+  amber50:     '#FFFBEB',
+  amber100:    '#FEF3C7',
+  amber600:    '#D97706',
+
+  green50:     '#F0FDF4',
+  green100:    '#DCFCE7',
+  green600:    '#16A34A',
+
+  blue50:      '#EFF6FF',
+  blue100:     '#DBEAFE',
+
+  purple50:    '#FAF5FF',
+  purple100:   '#F3E8FF',
+  purple500:   '#A855F7',
+  purple600:   '#9333EA',
+
+  indigo600:   '#4F46E5',
+  teal600:     '#0D9488',
+
+  onDark:      '#FFFFFF',
+  onDarkSub:   'rgba(255,255,255,0.62)',
+  onDarkMuted: 'rgba(255,255,255,0.32)',
+  glass:       'rgba(255,255,255,0.10)',
+  glassB:      'rgba(255,255,255,0.18)',
 };
 
 // ─── MOCK DATA ─────────────────────────────────────────────────────────────────
@@ -70,600 +93,1045 @@ const CASE = {
     status:  'Active',
     tier:    'Verified',
   },
-  events: [
-    { id:1, icon:'gavel',          color:C.red600,    bg:C.red50,    title:'Court Hearing',      desc:'Pre-trial motion hearing', dateLabel:'Today',    time:'09:30 AM', urgent:true  },
-    { id:2, icon:'users',          color:C.primary,   bg:C.blue50,   title:'Client Meeting',     desc:'Strategy discussion',      dateLabel:'Tomorrow', time:'02:00 PM', urgent:false },
-    { id:3, icon:'file-signature', color:C.purple600, bg:C.purple50, title:'Document Deadline',  desc:'Motion filing due',        dateLabel:'Mar 19',   time:'05:00 PM', urgent:false },
-  ],
-  documents: [
-    { id:1, icon:'file-pdf',   iconColor:'#fff', iconBg:C.red600,    name:'Motion to Dismiss.pdf',     size:'2.4 MB', date:'2 hours ago',  priority:true  },
-    { id:2, icon:'file-word',  iconColor:'#fff', iconBg:C.primary,   name:'Case Summary.docx',         size:'1.8 MB', date:'Yesterday',    priority:false },
-    { id:3, icon:'file-excel', iconColor:'#fff', iconBg:C.green600,  name:'Evidence Log.xlsx',         size:'856 KB', date:'3 days ago',   priority:false },
-    { id:4, icon:'file-alt',   iconColor:'#fff', iconBg:C.purple600, name:'Witness Statements.pdf',    size:'3.1 MB', date:'5 days ago',   priority:false },
-  ],
-  tasks: [
-    { id:1, title:'File Motion to Dismiss',      due:'Due Today 5:00 PM',    dueColor:C.red600,   priority:'urgent', assignee:'Sarah Williams', done:false },
-    { id:2, title:'Review Evidence Documents',   due:'Due Tomorrow 3:00 PM', dueColor:C.amber600, priority:'medium', assignee:'Michael Chen',   done:false },
-    { id:3, title:'Prepare Witness List',        due:'Due Mar 18',           dueColor:C.primary,  priority:'normal', assignee:'Jennifer Davis',  done:false },
-    { id:4, title:'Draft Opening Statement',     due:'Completed',            dueColor:C.green600, priority:'normal', assignee:'Sarah Williams',  done:true  },
-  ],
-  timeline: [
-    { id:1, icon:'gavel',     color:'#fff', bg:C.red600,    title:'Court Hearing Scheduled',  desc:'Trial hearing at 09:30 AM — Springfield County',          time:'Today',    badge:'Hearing',  badgeColor:C.red600,   badgeBg:C.red50   },
-    { id:2, icon:'file-alt',  color:'#fff', bg:C.primary,   title:'Motion to Dismiss Filed',  desc:'Defense motion filed with supporting documentation',       time:'2 hrs ago', badge:'Document', badgeColor:C.primary,  badgeBg:C.blue50  },
-    { id:3, icon:'users',     color:'#fff', bg:C.purple500, title:'Client Meeting Completed', desc:'Strategy discussion and case review with Marcus Johnson',   time:'Yesterday', badge:'Meeting',  badgeColor:C.purple600,badgeBg:C.purple50},
-    { id:4, icon:'check',     color:'#fff', bg:C.green600,  title:'Evidence Review Done',     desc:'All prosecution evidence reviewed and analyzed',            time:'2 days ago',badge:'Task',    badgeColor:C.green600, badgeBg:C.green50 },
-    { id:5, icon:'user-tie',  color:'#fff', bg:C.amber600,  title:'Expert Witness Deposition',desc:'Dr. Smith provided testimony on medical evidence',          time:'3 days ago',badge:'Event',   badgeColor:C.amber600, badgeBg:C.amber50 },
-  ],
-  notes: [
-    { id:1, author:'Sarah Williams', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', title:'Client Meeting Summary',    content:'Client confirms self-defense account. New witness identified — James T. Kirk present during altercation. Need to subpoena security footage from 3rd Ave.', time:'2 hours ago', borderColor:C.amber600, bg:'#FFFBEB'  },
-    { id:2, author:'Michael Chen',   avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', title:'Evidence Analysis Notes',   content:'Prosecution evidence appears weak. Medical report timing inconsistent with arrest timeline. Potential for dismissal if we challenge chain of custody.',    time:'Yesterday',  borderColor:C.primary,   bg:'#EFF6FF'  },
-    { id:3, author:'Jennifer Davis', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', title:'Research — Self Defense Law', content:'Relevant precedents found: People v. Smith (2019) and Torres v. State (2021). Both cases affirm reasonable force doctrine in similar contexts.',            time:'2 days ago', borderColor:C.purple600, bg:'#FAF5FF'  },
-  ],
 };
 
 const PRIORITY = {
-  urgent: { label:'Urgent', color:C.red600,   bg:C.red50,   icon:'fire'               },
-  high:   { label:'High',   color:C.amber600, bg:C.amber50, icon:'exclamation-triangle'},
-  medium: { label:'Medium', color:C.primary,  bg:C.blue50,  icon:'minus-circle'       },
-  normal: { label:'Normal', color:C.green600, bg:C.green50, icon:'check-circle'       },
+  urgent: { label: 'Urgent', color: C.red600,   bg: C.red50,   icon: 'fire',                dot: '#EF4444' },
+  high:   { label: 'High',   color: C.amber600, bg: C.amber50, icon: 'exclamation-triangle', dot: '#F59E0B' },
+  medium: { label: 'Medium', color: C.primary,  bg: C.blue50,  icon: 'minus-circle',         dot: '#3B82F6' },
+  normal: { label: 'Normal', color: C.green600, bg: C.green50, icon: 'check-circle',         dot: '#22C55E' },
 };
 
 const TABS = [
-  { key:'overview',  icon:'info-circle', label:'Overview'  },
-  { key:'documents', icon:'file-alt',    label:'Documents' },
-  { key:'tasks',     icon:'tasks',       label:'Tasks'     },
-  { key:'notes',     icon:'sticky-note', label:'Notes'     },
-  { key:'timeline',  icon:'history',     label:'Timeline'  },
+  { key: 'overview',  icon: 'layer-group',  label: 'Overview'  },
+  { key: 'documents', icon: 'file-alt',     label: 'Documents' },
+  { key: 'tasks',     icon: 'check-square', label: 'Tasks'     },
+  { key: 'invoices',  icon: 'file-invoice-dollar', label: 'Invoices' },
+  { key: 'notes',     icon: 'sticky-note',  label: 'Notes'     },
+  { key: 'timeline',  icon: 'stream',       label: 'Timeline'  },
 ];
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-const Chip = ({ label, color, bg }) => (
-  <View style={[h.chip, { backgroundColor: bg }]}>
-    <Text style={[h.chipText, { color }]}>{label}</Text>
+// ─── TINY HELPERS ─────────────────────────────────────────────────────────────
+const Badge = ({ label, color, bg, size = 11 }) => (
+  <View style={[util.badge, { backgroundColor: bg }]}>
+    <Text style={[util.badgeTxt, { color, fontSize: size }]}>{label}</Text>
   </View>
 );
 
-const Row = ({ icon, iconBg, iconColor, label, value, actionIcon, actionBg, actionColor }) => (
-  <View style={h.row}>
-    <View style={[h.rowIcon, { backgroundColor: iconBg }]}>
-      <FontAwesome5 name={icon} size={14} color={iconColor} />
+const SectionHead = ({ icon, iconColor, title, action, onAction }) => (
+  <View style={util.sHead}>
+    <View style={[util.sHeadIcon, { backgroundColor: iconColor + '18' }]}>
+      <FontAwesome5 name={icon} size={13} color={iconColor} />
     </View>
-    <View style={{ flex:1, marginLeft:12 }}>
-      <Text style={h.rowLabel}>{label}</Text>
-      <Text style={h.rowValue}>{value}</Text>
-    </View>
-    {actionIcon && (
-      <TouchableOpacity style={[h.rowAction, { backgroundColor: actionBg }]}>
-        <FontAwesome5 name={actionIcon} size={13} color={actionColor} />
+    <Text style={util.sHeadTitle}>{title}</Text>
+    {action && (
+      <TouchableOpacity onPress={onAction} style={util.sHeadAction}>
+        <Text style={util.sHeadActionTxt}>{action}</Text>
       </TouchableOpacity>
     )}
   </View>
 );
 
-const SectionHeader = ({ title, action, onAction }) => (
-  <View style={h.sectionHeader}>
-    <Text style={h.sectionTitle}>{title}</Text>
-    {action && <TouchableOpacity onPress={onAction}><Text style={h.sectionAction}>{action}</Text></TouchableOpacity>}
+const util = StyleSheet.create({
+  badge:        { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20 },
+  badgeTxt:     { fontWeight: '700' },
+  sHead:        { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  sHeadIcon:    { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  sHeadTitle:   { fontSize: 15, fontWeight: '800', color: C.dark, flex: 1 },
+  sHeadAction:  { paddingHorizontal: 12, paddingVertical: 5, backgroundColor: C.blue50, borderRadius: 20 },
+  sHeadActionTxt: { fontSize: 12, fontWeight: '700', color: C.primary },
+});
+
+// ─── SHARED CARD ──────────────────────────────────────────────────────────────
+const Card = ({ children, accent, style }) => (
+  <View style={[cd.wrap, accent && { borderLeftColor: accent, borderLeftWidth: 4 }, style]}>
+    {children}
   </View>
 );
 
-const h = StyleSheet.create({
-  chip:          { paddingHorizontal:10, paddingVertical:4, borderRadius:20 },
-  chipText:      { fontSize:11, fontWeight:'700' },
-  row:           { flexDirection:'row', alignItems:'center', paddingVertical:10, borderBottomWidth:1, borderBottomColor:C.g100 },
-  rowIcon:       { width:40, height:40, borderRadius:12, alignItems:'center', justifyContent:'center', flexShrink:0 },
-  rowLabel:      { fontSize:11, color:C.g400, marginBottom:2 },
-  rowValue:      { fontSize:13, fontWeight:'600', color:C.dark },
-  rowAction:     { width:36, height:36, borderRadius:10, alignItems:'center', justifyContent:'center' },
-  sectionHeader: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:14 },
-  sectionTitle:  { fontSize:16, fontWeight:'800', color:C.dark },
-  sectionAction: { fontSize:13, fontWeight:'700', color:C.primary },
+const cd = StyleSheet.create({
+  wrap: {
+    backgroundColor: C.white,
+    borderRadius: 20,
+    padding: 18,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: C.g100,
+  },
 });
+
+// ─── DOCUMENT ADAPTER ─────────────────────────────────────────────────────────
+const toDocDisplay = (doc) => {
+  const name = doc.file_name || doc.filename || 'Document';
+  const ext  = name.split('.').pop().toLowerCase();
+  const iconMap = {
+    pdf:  { icon: 'file-pdf',   bg: '#DC2626' },
+    docx: { icon: 'file-word',  bg: '#1E40AF' },
+    doc:  { icon: 'file-word',  bg: '#1E40AF' },
+    xlsx: { icon: 'file-excel', bg: '#16A34A' },
+    xls:  { icon: 'file-excel', bg: '#16A34A' },
+    png:  { icon: 'file-image', bg: '#0D9488' },
+    jpg:  { icon: 'file-image', bg: '#0D9488' },
+    jpeg: { icon: 'file-image', bg: '#0D9488' },
+  };
+  const { icon, bg } = iconMap[ext] || { icon: 'file-alt', bg: '#9333EA' };
+  // Backend stores file_size_mb (float) or file_size (bytes)
+  let sizeLabel = '';
+  if (doc.file_size_mb != null) {
+    sizeLabel = doc.file_size_mb < 1
+      ? `${Math.round(doc.file_size_mb * 1024)} KB`
+      : `${doc.file_size_mb.toFixed(1)} MB`;
+  } else if (doc.file_size != null) {
+    sizeLabel = doc.file_size > 1024 * 1024
+      ? `${(doc.file_size / 1024 / 1024).toFixed(1)} MB`
+      : `${Math.round(doc.file_size / 1024)} KB`;
+  }
+  const dateLabel = doc.created_at
+    ? new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—';
+  return { id: doc.id, icon, iconBg: bg, name, size: sizeLabel, date: dateLabel, url: doc.storage_url || null };
+};
+
+// ─── TASK ADAPTER ─────────────────────────────────────────────────────────────
+const TASK_PRI_MAP = { URGENT: 'urgent', HIGH: 'high', MEDIUM: 'medium', NORMAL: 'normal', LOW: 'normal' };
+const toTaskDisplay = (task) => {
+  const today    = new Date(); today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const dueDate  = task.due_date ? new Date(task.due_date) : null;
+  const isDone   = ['DONE', 'COMPLETED'].includes((task.status || '').toUpperCase());
+  let dueLabel, dueColor;
+  if (isDone)               { dueLabel = 'Completed';    dueColor = C.green600; }
+  else if (!dueDate)        { dueLabel = 'No due date';  dueColor = C.g400;     }
+  else if (dueDate <= today){ dueLabel = 'Due Today';    dueColor = C.red600;   }
+  else if (dueDate <= tomorrow){ dueLabel = 'Due Tomorrow'; dueColor = C.amber600; }
+  else {
+    dueLabel = `Due ${dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    dueColor = C.primary;
+  }
+  return {
+    id:       task.id,
+    title:    task.title || 'Task',
+    due:      dueLabel,
+    dueColor,
+    priority: TASK_PRI_MAP[(task.priority || '').toUpperCase()] || 'normal',
+    assignee: task.assigned_to_name || task.assigned_to || '',
+    done:     isDone,
+  };
+};
+
+// ─── NOTE ADAPTER ─────────────────────────────────────────────────────────────
+const NOTE_STYLES = [
+  { bg: C.amber50,  border: C.amber600 },
+  { bg: C.blue50,   border: C.primary  },
+  { bg: C.purple50, border: C.purple600 },
+];
+const toNoteDisplay = (note, idx) => {
+  const style    = NOTE_STYLES[idx % NOTE_STYLES.length];
+  const dateLabel = note.created_at
+    ? new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—';
+  return {
+    id: note.id, author: note.author_name || 'Team Member',
+    avatar: note.author_avatar || null,
+    title: note.title || 'Note', content: note.content || '',
+    time: dateLabel, borderColor: style.border, bg: style.bg,
+  };
+};
+
+// ─── TIMELINE ADAPTER ─────────────────────────────────────────────────────────
+const toTimelineDisplay = (item) => {
+  const dateLabel = item.created_at
+    ? new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '—';
+  return {
+    id: item.id, icon: 'history', color: '#fff', bg: C.primary,
+    title: item.action || 'Activity',
+    desc: item.performed_by_name || item.performed_by || '',
+    time: dateLabel, badge: 'Update', badgeColor: C.primary, badgeBg: C.blue50,
+  };
+};
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: OVERVIEW
 // ═════════════════════════════════════════════════════════════════════════════
-const OverviewTab = ({ caseData, editMode, form, setForm }) => {
+const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode, form, setForm }) => {
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   return (
-    <View>
-      {/* Urgent countdown banner */}
+    <View style={{ paddingTop: 4 }}>
+
+      {/* Hearing alert */}
       {caseData.nextHearing && (
-        <View style={ov.urgentBanner}>
-          <View style={ov.urgentLeft}>
-            <View style={ov.pulseDot} />
-            <Text style={ov.urgentLabel}>URGENT</Text>
-          </View>
-          <View style={ov.urgentRight}>
-            <FontAwesome5 name="clock" size={12} color={C.red600} />
-            <Text style={ov.urgentText}>Hearing Today — {caseData.nextHearing.time}</Text>
+        <View style={ov.hearingAlert}>
+          <View style={ov.hearingPulse} />
+          <FontAwesome5 name="gavel" size={13} color={C.red600} />
+          <Text style={ov.hearingAlertTxt}>
+            Hearing {caseData.nextHearing.label} · {caseData.nextHearing.time} · {caseData.nextHearing.room}
+          </Text>
+          <View style={ov.countdownPill}>
+            <FontAwesome5 name="clock" size={10} color={C.white} />
+            <Text style={ov.countdownTxt}>{caseData.nextHearing.countdown}</Text>
           </View>
         </View>
       )}
 
-      {/* Countdown card */}
-      {caseData.nextHearing && (
-        <View style={ov.countdownCard}>
-          <Text style={ov.countdownLabel}>Time Remaining</Text>
-          <Text style={ov.countdownValue}>{caseData.nextHearing.countdown}</Text>
-        </View>
-      )}
-
-      {/* Case Description */}
-      <View style={card.wrap}>
-        <SectionHeader title="Case Description" action={editMode ? null : 'Edit'} />
+      {/* Description */}
+      <Card accent={C.primary}>
+        <SectionHead
+          icon="align-left"
+          iconColor={C.primary}
+          title="About This Case"
+          action={editMode ? 'Done' : 'Edit'}
+          onAction={() => setEditMode(e => !e)}
+        />
         {editMode ? (
           <TextInput
-            style={[form_s.input, { height:90, textAlignVertical:'top', paddingTop:10 }]}
+            style={ov.editInput}
             value={form.description}
             onChangeText={v => upd('description', v)}
             multiline
           />
         ) : (
-          <Text style={ov.descText}>{caseData.description}</Text>
+          <Text style={ov.descText}>{form.description}</Text>
         )}
-        <View style={ov.detailGrid}>
-          {[['Court',      caseData.court],
-            ['Judge',      caseData.judge],
-            ['Prosecutor', caseData.prosecutor],
-            ['Case Value', caseData.caseValue],
-          ].map(([k, v]) => (
-            <View key={k} style={ov.detailItem}>
-              <Text style={ov.detailKey}>{k}</Text>
-              <Text style={ov.detailVal}>{v}</Text>
+        {(() => {
+          const items = [
+            { k: 'Court',      v: caseData.court,      icon: 'landmark',      c: C.primary   },
+            { k: 'Judge',      v: caseData.judge,      icon: 'user-tie',      c: C.indigo600 },
+            { k: 'Prosecutor', v: caseData.prosecutor, icon: 'balance-scale', c: C.red600    },
+            { k: 'Case Value', v: caseData.caseValue,  icon: 'dollar-sign',   c: C.green600  },
+          ].filter(({ v }) => v && String(v).trim() !== '');
+          if (items.length === 0) return null;
+          return (
+            <View style={ov.keyGrid}>
+              {items.map(({ k, v, icon, c }) => (
+                <View key={k} style={ov.keyItem}>
+                  <View style={[ov.keyIcon, { backgroundColor: c + '18' }]}>
+                    <FontAwesome5 name={icon} size={11} color={c} />
+                  </View>
+                  <View>
+                    <Text style={ov.keyLabel}>{k}</Text>
+                    <Text style={ov.keyVal} numberOfLines={1}>{v}</Text>
+                  </View>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-      </View>
+          );
+        })()}
+      </Card>
 
-      {/* Case Details (editable) */}
-      <View style={card.wrap}>
-        <SectionHeader title="Case Details" action={editMode ? undefined : undefined} />
+      {/* Case Fields */}
+      <Card accent={C.indigo600}>
+        <SectionHead icon="sliders-h" iconColor={C.indigo600} title="Case Details" />
 
-        <View style={form_s.field}>
-          <Text style={form_s.label}>Case Title</Text>
-          <TextInput
-            style={[form_s.input, !editMode && form_s.readonly]}
-            value={form.title}
-            onChangeText={v => upd('title', v)}
-            editable={editMode}
-          />
-        </View>
+        {editMode ? (
+          /* ── EDIT MODE : champs de saisie ── */
+          <>
+            <View style={ov.field}>
+              <Text style={ov.fieldLabel}>Case Title</Text>
+              <TextInput style={ov.fieldInput} value={form.title} onChangeText={v => upd('title', v)} />
+            </View>
 
-        <View style={form_s.field}>
-          <Text style={form_s.label}>Case Type</Text>
-          <View style={[form_s.input, form_s.selectRow, !editMode && form_s.readonly]}>
-            <Text style={form_s.selectText}>{form.caseType}</Text>
-            <FontAwesome5 name="chevron-down" size={10} color={C.g400} />
-          </View>
-        </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={[ov.field, { flex: 1 }]}>
+                <Text style={ov.fieldLabel}>Type</Text>
+                <View style={[ov.fieldInput, ov.rowBetween]}>
+                  <Text style={ov.fieldTxt}>{form.caseType}</Text>
+                  <FontAwesome5 name="chevron-down" size={10} color={C.g400} />
+                </View>
+              </View>
+              <View style={[ov.field, { flex: 1 }]}>
+                <Text style={ov.fieldLabel}>Phase</Text>
+                <View style={[ov.fieldInput, ov.rowBetween]}>
+                  <Text style={ov.fieldTxt}>{form.phase}</Text>
+                  <FontAwesome5 name="chevron-down" size={10} color={C.g400} />
+                </View>
+              </View>
+            </View>
 
-        <View style={form_s.field}>
-          <Text style={form_s.label}>Case Status</Text>
-          <View style={[form_s.input, form_s.selectRow, !editMode && form_s.readonly]}>
-            <Text style={form_s.selectText}>{form.phase}</Text>
-            <FontAwesome5 name="chevron-down" size={10} color={C.g400} />
-          </View>
-        </View>
+            <View style={ov.field}>
+              <Text style={ov.fieldLabel}>Priority</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {['urgent', 'high', 'medium', 'normal'].map(p => {
+                  const pr = PRIORITY[p]; const active = form.priority === p;
+                  return (
+                    <TouchableOpacity
+                      key={p}
+                      style={[ov.priBtn, { backgroundColor: active ? pr.color : C.g50, borderColor: active ? pr.color : C.g200 }]}
+                      onPress={() => upd('priority', p)}
+                    >
+                      <View style={[ov.priDot, { backgroundColor: active ? C.white : pr.dot }]} />
+                      <Text style={[ov.priTxt, { color: active ? C.white : C.g500 }]}>{pr.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
 
-        <View style={form_s.field}>
-          <Text style={form_s.label}>Priority Level</Text>
-          <View style={form_s.priorityRow}>
-            {['urgent','high','medium','normal'].map(p => {
-              const pr = PRIORITY[p]; const active = form.priority === p;
-              return (
-                <TouchableOpacity
-                  key={p}
-                  style={[form_s.priorityBtn, { backgroundColor: active ? pr.bg : C.g50, borderColor: active ? pr.color : C.g200, borderWidth: active ? 2 : 1 }]}
-                  onPress={() => editMode && upd('priority', p)}
-                >
-                  <FontAwesome5 name={pr.icon} size={10} color={active ? pr.color : C.g400} />
-                  <Text style={[form_s.priorityText, { color: active ? pr.color : C.g500 }]}>{pr.label}</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={[ov.field, { flex: 1 }]}>
+                <Text style={ov.fieldLabel}>Filing Date</Text>
+                <TextInput style={ov.fieldInput} value={form.filingDate} onChangeText={v => upd('filingDate', v)} />
+              </View>
+              <View style={[ov.field, { flex: 1 }]}>
+                <Text style={ov.fieldLabel}>Next Hearing</Text>
+                <TextInput style={ov.fieldInput} value={form.nextHearing} onChangeText={v => upd('nextHearing', v)} />
+              </View>
+            </View>
+
+            <View style={ov.field}>
+              <Text style={ov.fieldLabel}>Assigned Attorney</Text>
+              <View style={[ov.fieldInput, ov.rowBetween]}>
+                <Text style={ov.fieldTxt}>{form.attorney}</Text>
+                <FontAwesome5 name="chevron-down" size={10} color={C.g400} />
+              </View>
+            </View>
+
+            <View style={ov.field}>
+              <Text style={ov.fieldLabel}>Court Location</Text>
+              <TextInput style={ov.fieldInput} value={form.court} onChangeText={v => upd('court', v)} />
+            </View>
+
+            <View style={ov.field}>
+              <Text style={ov.fieldLabel}>Tags</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {form.tags.map(tag => (
+                  <View key={tag} style={ov.tagChip}>
+                    <FontAwesome5 name="tag" size={9} color={C.primary} />
+                    <Text style={ov.tagTxt}>{tag}</Text>
+                    <TouchableOpacity onPress={() => upd('tags', form.tags.filter(t => t !== tag))}>
+                      <FontAwesome5 name="times" size={9} color={C.primary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <TouchableOpacity style={[ov.tagChip, { backgroundColor: C.g100, borderWidth: 1, borderColor: C.g300 }]}>
+                  <FontAwesome5 name="plus" size={9} color={C.g500} />
+                  <Text style={[ov.tagTxt, { color: C.g500 }]}>Add tag</Text>
                 </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        <View style={form_s.twoCol}>
-          <View style={[form_s.field, { flex:1, marginRight:6 }]}>
-            <Text style={form_s.label}>Filing Date</Text>
-            <TextInput style={[form_s.input, !editMode && form_s.readonly]} value={form.filingDate} editable={editMode} onChangeText={v => upd('filingDate', v)} />
-          </View>
-          <View style={[form_s.field, { flex:1, marginLeft:6 }]}>
-            <Text style={form_s.label}>Next Hearing</Text>
-            <TextInput style={[form_s.input, !editMode && form_s.readonly]} value={form.nextHearing} editable={editMode} onChangeText={v => upd('nextHearing', v)} />
-          </View>
-        </View>
-
-        <View style={form_s.field}>
-          <Text style={form_s.label}>Assigned Attorney</Text>
-          <View style={[form_s.input, form_s.selectRow, !editMode && form_s.readonly]}>
-            <Text style={form_s.selectText}>{form.attorney}</Text>
-            <FontAwesome5 name="chevron-down" size={10} color={C.g400} />
-          </View>
-        </View>
-
-        <View style={form_s.field}>
-          <Text style={form_s.label}>Court Location</Text>
-          <TextInput style={[form_s.input, !editMode && form_s.readonly]} value={form.court} editable={editMode} onChangeText={v => upd('court', v)} />
-        </View>
-
-        {/* Tags */}
-        <View style={form_s.field}>
-          <Text style={form_s.label}>Tags</Text>
-          <View style={form_s.tagsRow}>
-            {form.tags.map(tag => (
-              <View key={tag} style={form_s.tagChip}>
-                <Text style={form_s.tagText}>{tag}</Text>
-                {editMode && (
-                  <TouchableOpacity onPress={() => upd('tags', form.tags.filter(t => t !== tag))} style={{ marginLeft:5 }}>
-                    <FontAwesome5 name="times" size={9} color={C.primary} />
-                  </TouchableOpacity>
-                )}
+              </View>
+            </View>
+          </>
+        ) : (
+          /* ── READ MODE : affichage propre des informations ── */
+          <>
+            {[
+              { icon: 'heading',      color: C.primary,   label: 'Case Title',       value: form.title       },
+              { icon: 'briefcase',    color: C.indigo600, label: 'Type',             value: form.caseType    },
+              { icon: 'layer-group',  color: C.purple600, label: 'Phase',            value: form.phase       },
+              { icon: 'calendar',     color: C.teal600,   label: 'Filing Date',      value: form.filingDate  },
+              { icon: 'calendar-alt', color: C.red600,    label: 'Next Hearing',     value: form.nextHearing || '—' },
+              { icon: 'user-tie',     color: C.amber600,  label: 'Attorney',         value: form.attorney    },
+              { icon: 'landmark',     color: C.primary,   label: 'Court Location',   value: form.court       },
+            ].map(({ icon, color, label, value }) => (
+              <View key={label} style={ov.infoRow}>
+                <View style={[ov.infoIcon, { backgroundColor: color + '18' }]}>
+                  <FontAwesome5 name={icon} size={13} color={color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={ov.infoLabel}>{label}</Text>
+                  <Text style={ov.infoValue}>{value}</Text>
+                </View>
               </View>
             ))}
-            {editMode && (
-              <TouchableOpacity style={form_s.tagAdd}>
-                <FontAwesome5 name="plus" size={10} color={C.primary} />
-                <Text style={form_s.tagText}>Add Tag</Text>
-              </TouchableOpacity>
+
+            {/* Priority badge */}
+            <View style={ov.infoRow}>
+              <View style={[ov.infoIcon, { backgroundColor: PRIORITY[form.priority]?.color + '18' }]}>
+                <FontAwesome5 name={PRIORITY[form.priority]?.icon} size={13} color={PRIORITY[form.priority]?.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={ov.infoLabel}>Priority</Text>
+                <View style={[ov.priBadge, { backgroundColor: PRIORITY[form.priority]?.bg }]}>
+                  <Text style={[ov.priBadgeTxt, { color: PRIORITY[form.priority]?.color }]}>
+                    {PRIORITY[form.priority]?.label}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Tags */}
+            {form.tags.length > 0 && (
+              <View style={ov.infoRow}>
+                <View style={[ov.infoIcon, { backgroundColor: C.blue50 }]}>
+                  <FontAwesome5 name="tags" size={13} color={C.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={ov.infoLabel}>Tags</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                    {form.tags.map(tag => (
+                      <View key={tag} style={ov.tagChip}>
+                        <Text style={ov.tagTxt}>{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
             )}
-          </View>
-        </View>
-      </View>
+          </>
+        )}
+      </Card>
 
       {/* Upcoming Events */}
-      <View style={card.wrap}>
-        <SectionHeader title="Upcoming Events" action="+ Add Event" />
-        {CASE.events.map((ev) => (
-          <View key={ev.id} style={[ov.evCard, { borderLeftColor: ev.color }]}>
-            <View style={[ov.evIcon, { backgroundColor: ev.bg }]}>
-              <FontAwesome5 name={ev.icon} size={16} color={ev.color} />
-            </View>
-            <View style={{ flex:1, marginLeft:12 }}>
-              <Text style={ov.evTitle}>{ev.title}</Text>
-              <Text style={ov.evDesc}>{ev.desc}</Text>
-              <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginTop:5 }}>
-                <Chip label={ev.dateLabel} color={ev.color} bg={ev.bg} />
-                <Text style={[ov.evTime, { color: ev.color }]}>{ev.time}</Text>
-              </View>
-            </View>
-            {ev.urgent && (
-              <TouchableOpacity style={[ov.dirBtn, { backgroundColor: ev.color }]}>
-                <FontAwesome5 name="map-marker-alt" size={12} color={C.white} />
-              </TouchableOpacity>
-            )}
+      <Card accent={C.red600}>
+        <SectionHead icon="calendar-alt" iconColor={C.red600} title="Upcoming Events" />
+        {events.length === 0 ? (
+          <View style={ov.emptyBox}>
+            <FontAwesome5 name="calendar-times" size={28} color={C.g300} />
+            <Text style={ov.emptyTxt}>No upcoming events</Text>
           </View>
-        ))}
-      </View>
-
-      {/* Case Metrics */}
-      <View style={card.wrap}>
-        <SectionHeader title="Case Metrics" />
-        <View style={ov.metricsGrid}>
-          {[
-            { icon:'file-alt',    iconColor:C.primary,   iconBg:C.blue100,   value:'23', label:'Documents'    },
-            { icon:'tasks',       iconColor:C.amber600,  iconBg:C.amber100,  value:'5',  label:'Active Tasks' },
-            { icon:'calendar',    iconColor:C.green600,  iconBg:C.green100,  value:'8',  label:'Events'       },
-            { icon:'sticky-note', iconColor:C.purple600, iconBg:C.purple100, value:'12', label:'Notes'        },
-          ].map((m) => (
-            <View key={m.label} style={ov.metricCard}>
-              <View style={[ov.metricIcon, { backgroundColor: m.iconBg }]}>
-                <FontAwesome5 name={m.icon} size={18} color={m.iconColor} />
+        ) : events.map((ev, idx) => {
+          const isHearing = (ev.event_type === 'HEARING' || ev.event_type === 'COURT_DATE');
+          const evColor   = isHearing ? C.red600 : C.primary;
+          const evBg      = isHearing ? C.red50  : C.blue50;
+          const evIcon    = isHearing ? 'gavel'  : 'calendar';
+          const dateLabel = ev.start_datetime
+            ? new Date(ev.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            : '—';
+          const timeLabel = ev.start_datetime
+            ? new Date(ev.start_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            : '';
+          return (
+            <View key={ev.id ?? idx} style={ov.evRow}>
+              <View style={[ov.evIconBox, { backgroundColor: evBg }]}>
+                <FontAwesome5 name={evIcon} size={16} color={evColor} />
               </View>
-              <Text style={ov.metricValue}>{m.value}</Text>
-              <Text style={ov.metricLabel}>{m.label}</Text>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={ov.evTitle}>{ev.title}</Text>
+                {ev.location ? <Text style={ov.evDesc}>{ev.location}</Text> : null}
+              </View>
+              <View style={[ov.evDateBadge, { backgroundColor: evBg }]}>
+                <Text style={[ov.evDateTxt, { color: evColor }]}>{dateLabel}</Text>
+                <Text style={[ov.evTimeTxt, { color: evColor }]}>{timeLabel}</Text>
+              </View>
             </View>
-          ))}
-        </View>
+          );
+        })}
+      </Card>
 
-        {/* Time Tracking */}
-        <View style={ov.timeTrack}>
-          <View style={ov.timeTrackHeader}>
-            <Text style={ov.timeTrackTitle}>Time Tracking</Text>
-            <Text style={[ov.timeTrackTitle, { color: C.primary, fontWeight:'700' }]}>View Details</Text>
-          </View>
+      {/* Time Tracking */}
+      <Card accent={C.teal600}>
+        <SectionHead icon="stopwatch" iconColor={C.teal600} title="Time Tracking" action="Details" />
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
           {[
-            { label:'Billable Hours',     value:'47.5 hrs', pct:0.75, color:C.primary },
-            { label:'Non-Billable Hours', value:'12.3 hrs', pct:0.25, color:C.g400   },
-          ].map((t, i) => (
-            <View key={t.label} style={{ marginBottom: i === 0 ? 12 : 0 }}>
-              <View style={ov.timeRow}>
-                <Text style={ov.timeLabel}>{t.label}</Text>
-                <Text style={[ov.timeValue, { color: t.color }]}>{t.value}</Text>
-              </View>
-              <View style={ov.progressBg}>
-                <View style={[ov.progressFill, { width: `${t.pct * 100}%`, backgroundColor: t.color }]} />
+            { label: 'Billable', value: '47.5', unit: 'hrs', color: C.teal600, bg: '#F0FDFA', pct: '75%' },
+            { label: 'Non-Billable', value: '12.3', unit: 'hrs', color: C.g500, bg: C.g50, pct: '25%' },
+          ].map(t => (
+            <View key={t.label} style={[ov.timeCard, { backgroundColor: t.bg }]}>
+              <Text style={ov.timeCardLabel}>{t.label}</Text>
+              <Text style={[ov.timeCardValue, { color: t.color }]}>{t.value}<Text style={ov.timeCardUnit}> {t.unit}</Text></Text>
+              <View style={ov.timeBarBg}>
+                <View style={[ov.timeBarFill, { width: t.pct, backgroundColor: t.color }]} />
               </View>
             </View>
           ))}
         </View>
-      </View>
+      </Card>
 
-      {/* AI Assistant */}
+      {/* AI Card */}
       <View style={ov.aiCard}>
-        <View style={{ flexDirection:'row', alignItems:'center', gap:14, marginBottom:14 }}>
-          <View style={ov.aiIcon}>
+        <View style={ov.aiHeader}>
+          <View style={ov.aiIconBox}>
             <FontAwesome5 name="robot" size={22} color={C.white} />
           </View>
-          <View>
+          <View style={{ flex: 1, marginLeft: 14 }}>
             <Text style={ov.aiTitle}>AI Case Assistant</Text>
             <Text style={ov.aiSub}>Advanced Legal AI · Ready to help</Text>
           </View>
-          <View style={ov.aiOnline}>
-            <View style={ov.aiDot} /><Text style={ov.aiOnlineText}>Online</Text>
+          <View style={ov.aiOnlinePill}>
+            <View style={ov.aiOnlineDot} />
+            <Text style={ov.aiOnlineTxt}>Live</Text>
           </View>
         </View>
-        {[
-          { icon:'file-alt',           label:'Summarize this case'   },
-          { icon:'exclamation-triangle', label:'Identify legal risks' },
-          { icon:'calendar-check',     label:'Extract all deadlines' },
-          { icon:'search',             label:'Research case law'     },
-        ].map(a => (
-          <TouchableOpacity key={a.label} style={ov.aiBtn}>
-            <FontAwesome5 name={a.icon} size={13} color={C.white} />
-            <Text style={ov.aiBtnText}>{a.label}</Text>
-            <FontAwesome5 name="chevron-right" size={10} color="rgba(255,255,255,0.5)" style={{ marginLeft:'auto' }} />
-          </TouchableOpacity>
-        ))}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {[
+            { icon: 'file-alt',            label: 'Summarize Case'    },
+            { icon: 'exclamation-triangle', label: 'Legal Risks'      },
+            { icon: 'calendar-check',      label: 'Key Deadlines'     },
+            { icon: 'search',              label: 'Case Law Research' },
+          ].map(a => (
+            <TouchableOpacity key={a.label} style={ov.aiAction}>
+              <FontAwesome5 name={a.icon} size={12} color={C.white} />
+              <Text style={ov.aiActionTxt}>{a.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
+
     </View>
   );
 };
 
 const ov = StyleSheet.create({
-  urgentBanner:   { flexDirection:'row', justifyContent:'space-between', alignItems:'center', backgroundColor:C.red50, borderBottomWidth:1, borderBottomColor:C.red100, paddingHorizontal:16, paddingVertical:10 },
-  urgentLeft:     { flexDirection:'row', alignItems:'center', gap:6 },
-  pulseDot:       { width:8, height:8, borderRadius:4, backgroundColor:C.red500 },
-  urgentLabel:    { fontSize:12, fontWeight:'800', color:C.red600, letterSpacing:1 },
-  urgentRight:    { flexDirection:'row', alignItems:'center', gap:6 },
-  urgentText:     { fontSize:12, fontWeight:'700', color:C.red600 },
-  countdownCard:  { flexDirection:'row', justifyContent:'space-between', alignItems:'center', backgroundColor:C.white, marginHorizontal:16, marginTop:10, marginBottom:4, borderRadius:14, paddingHorizontal:16, paddingVertical:12, borderWidth:1, borderColor:C.g100, shadowColor:'#000', shadowOpacity:0.04, shadowRadius:6, elevation:2 },
-  countdownLabel: { fontSize:12, color:C.g500, fontWeight:'500' },
-  countdownValue: { fontSize:22, fontWeight:'800', color:C.red600 },
-  descText:       { fontSize:14, color:C.g600, lineHeight:22, marginBottom:14 },
-  detailGrid:     { flexDirection:'row', flexWrap:'wrap', borderTopWidth:1, borderTopColor:C.g100, paddingTop:12 },
-  detailItem:     { width:'50%', paddingVertical:6, paddingRight:6 },
-  detailKey:      { fontSize:11, color:C.g400, marginBottom:2 },
-  detailVal:      { fontSize:13, fontWeight:'700', color:C.dark },
+  // Hearing alert
+  hearingAlert:    { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.red50, borderLeftWidth: 4, borderLeftColor: C.red600, borderRadius: 14, marginHorizontal: 16, marginBottom: 12, marginTop: 4, paddingHorizontal: 14, paddingVertical: 12 },
+  hearingPulse:    { width: 8, height: 8, borderRadius: 4, backgroundColor: C.red500 },
+  hearingAlertTxt: { flex: 1, fontSize: 12, fontWeight: '700', color: C.red600 },
+  countdownPill:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.red600, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  countdownTxt:    { fontSize: 11, fontWeight: '800', color: C.white },
+
+  // Description
+  descText:      { fontSize: 14, color: C.g600, lineHeight: 22, marginBottom: 16 },
+  editInput:     { borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, padding: 12, fontSize: 14, color: C.dark, height: 100, textAlignVertical: 'top', marginBottom: 16 },
+  keyGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10, borderTopWidth: 1, borderTopColor: C.g100, paddingTop: 14 },
+  keyItem:       { width: (W - 32 - 68 - 10) / 2, flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  keyIcon:       { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 2, flexShrink: 0 },
+  keyLabel:      { fontSize: 10, color: C.g400, marginBottom: 2, fontWeight: '600' },
+  keyVal:        { fontSize: 12, fontWeight: '800', color: C.dark },
+
+  // Fields
+  field:         { marginBottom: 14 },
+  fieldLabel:    { fontSize: 11, fontWeight: '700', color: C.g500, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  fieldInput:    { borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: C.dark, backgroundColor: C.white },
+  fieldReadonly: { backgroundColor: C.g50, borderColor: C.g100 },
+  fieldTxt:      { fontSize: 14, color: C.dark },
+  rowBetween:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+
+  // Read-only info rows
+  infoRow:       { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  infoIcon:      { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12, marginTop: 2, flexShrink: 0 },
+  infoLabel:     { fontSize: 11, color: C.g400, fontWeight: '600', marginBottom: 3 },
+  infoValue:     { fontSize: 14, fontWeight: '700', color: C.dark },
+  priBadge:      { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginTop: 2 },
+  priBadgeTxt:   { fontSize: 12, fontWeight: '800' },
+
+  // Priority edit buttons
+  priBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5 },
+  priDot:        { width: 7, height: 7, borderRadius: 4 },
+  priTxt:        { fontSize: 10, fontWeight: '800' },
+
+  // Tags
+  tagChip:       { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.blue50, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 20 },
+  tagTxt:        { fontSize: 12, fontWeight: '700', color: C.primary },
+
   // Events
-  evCard:         { flexDirection:'row', alignItems:'center', backgroundColor:C.g50, borderLeftWidth:4, borderRadius:14, padding:12, marginBottom:10 },
-  evIcon:         { width:44, height:44, borderRadius:13, alignItems:'center', justifyContent:'center', flexShrink:0 },
-  evTitle:        { fontSize:13, fontWeight:'700', color:C.dark },
-  evDesc:         { fontSize:12, color:C.g500, marginTop:2 },
-  evTime:         { fontSize:12, fontWeight:'700' },
-  dirBtn:         { width:36, height:36, borderRadius:10, alignItems:'center', justifyContent:'center' },
-  // Metrics
-  metricsGrid:    { flexDirection:'row', flexWrap:'wrap', gap:10, marginBottom:16 },
-  metricCard:     { width:(W-32-10*3)/4, backgroundColor:C.g50, borderRadius:14, padding:12, alignItems:'center' },
-  metricIcon:     { width:44, height:44, borderRadius:13, alignItems:'center', justifyContent:'center', marginBottom:8 },
-  metricValue:    { fontSize:20, fontWeight:'800', color:C.dark },
-  metricLabel:    { fontSize:10, color:C.g500, marginTop:2, textAlign:'center' },
+  emptyBox:      { alignItems: 'center', paddingVertical: 20, gap: 8 },
+  emptyTxt:      { fontSize: 13, color: C.g400, fontWeight: '600' },
+  evRow:         { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g50, borderRadius: 14, padding: 12, marginBottom: 10 },
+  evIconBox:     { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  evTitle:       { fontSize: 13, fontWeight: '700', color: C.dark },
+  evDesc:        { fontSize: 11, color: C.g500, marginTop: 2 },
+  evDateBadge:   { alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  evDateTxt:     { fontSize: 12, fontWeight: '800' },
+  evTimeTxt:     { fontSize: 10, fontWeight: '600', marginTop: 2 },
+
   // Time tracking
-  timeTrack:      { backgroundColor:C.g50, borderRadius:14, padding:14 },
-  timeTrackHeader:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:12 },
-  timeTrackTitle: { fontSize:13, fontWeight:'600', color:C.dark },
-  timeRow:        { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:6 },
-  timeLabel:      { fontSize:12, color:C.g600 },
-  timeValue:      { fontSize:13, fontWeight:'700' },
-  progressBg:     { height:8, backgroundColor:C.g200, borderRadius:4, overflow:'hidden' },
-  progressFill:   { height:8, borderRadius:4 },
+  timeCard:      { flex: 1, borderRadius: 14, padding: 14 },
+  timeCardLabel: { fontSize: 11, fontWeight: '700', color: C.g500, marginBottom: 6 },
+  timeCardValue: { fontSize: 24, fontWeight: '900' },
+  timeCardUnit:  { fontSize: 12, fontWeight: '500', color: C.g400 },
+  timeBarBg:     { height: 6, backgroundColor: C.g200, borderRadius: 3, marginTop: 10, overflow: 'hidden' },
+  timeBarFill:   { height: 6, borderRadius: 3 },
+
   // AI
-  aiCard:         { backgroundColor:C.indigo600, marginHorizontal:16, marginBottom:12, borderRadius:20, padding:18 },
-  aiIcon:         { width:50, height:50, borderRadius:15, backgroundColor:'rgba(255,255,255,0.2)', alignItems:'center', justifyContent:'center' },
-  aiTitle:        { fontSize:15, fontWeight:'800', color:C.white },
-  aiSub:          { fontSize:11, color:'rgba(255,255,255,0.65)', marginTop:2 },
-  aiOnline:       { marginLeft:'auto', flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(255,255,255,0.15)', paddingHorizontal:10, paddingVertical:5, borderRadius:20 },
-  aiDot:          { width:6, height:6, borderRadius:3, backgroundColor:'#4ADE80' },
-  aiOnlineText:   { fontSize:11, color:C.white, fontWeight:'600' },
-  aiBtn:          { flexDirection:'row', alignItems:'center', gap:10, backgroundColor:'rgba(255,255,255,0.12)', borderRadius:12, padding:12, marginBottom:8 },
-  aiBtnText:      { fontSize:13, fontWeight:'600', color:C.white },
+  aiCard:       { backgroundColor: C.slate900, marginHorizontal: 16, marginBottom: 16, borderRadius: 22, padding: 20 },
+  aiHeader:     { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  aiIconBox:    { width: 50, height: 50, borderRadius: 16, backgroundColor: C.glass, alignItems: 'center', justifyContent: 'center' },
+  aiTitle:      { fontSize: 15, fontWeight: '800', color: C.white },
+  aiSub:        { fontSize: 11, color: C.onDarkSub, marginTop: 2 },
+  aiOnlinePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.glassB, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  aiOnlineDot:  { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ADE80' },
+  aiOnlineTxt:  { fontSize: 11, color: C.white, fontWeight: '700' },
+  aiAction:     { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.glass, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 },
+  aiActionTxt:  { fontSize: 12, fontWeight: '700', color: C.white },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: DOCUMENTS
 // ═════════════════════════════════════════════════════════════════════════════
-const DocumentsTab = () => (
-  <View style={card.wrap}>
-    <SectionHeader title={`Documents (${CASE.stats.docs})`} action="Upload" />
-    {CASE.documents.map(doc => (
-      <View key={doc.id} style={[doc_s.card, doc.priority && doc_s.cardPriority]}>
-        <View style={[doc_s.icon, { backgroundColor: doc.iconBg }]}>
-          <FontAwesome5 name={doc.icon} size={20} color={doc.iconColor} />
-        </View>
-        <View style={{ flex:1, marginLeft:12 }}>
-          <Text style={doc_s.name} numberOfLines={1}>{doc.name}</Text>
-          <Text style={doc_s.meta}>{doc.size} · Uploaded {doc.date}</Text>
-          <View style={{ flexDirection:'row', gap:8, marginTop:8 }}>
-            <TouchableOpacity style={[doc_s.btn, { backgroundColor: doc.iconBg }]}>
-              <FontAwesome5 name="eye" size={11} color={C.white} /><Text style={doc_s.btnText}>View</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[doc_s.btnOutline, { borderColor: doc.iconBg }]}>
-              <FontAwesome5 name="download" size={11} color={doc.iconBg} /><Text style={[doc_s.btnText, { color: doc.iconBg }]}>Download</Text>
+const DocumentsTab = ({ documents = [], stats = {}, loading = false, caseId, onUploaded }) => {
+  const [uploading, setUploading] = useState(false);
+  const [localDocs, setLocalDocs] = useState(documents);
+
+  useEffect(() => { setLocalDocs(documents); }, [documents]);
+
+  const items = localDocs.map(toDocDisplay);
+  const count = stats.docs ?? items.length;
+
+  const handleUpload = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      setUploading(true);
+
+      const file = {
+        uri:      asset.uri,
+        name:     asset.name,
+        mimeType: asset.mimeType || 'application/octet-stream',
+      };
+
+      await documentsAPI.upload(file, caseId);
+      Alert.alert('Success', `"${asset.name}" uploaded successfully.`);
+
+      // Refresh list
+      const updated = await documentsAPI.list({ case_id: caseId }).catch(() => []);
+      const arr = Array.isArray(updated) ? updated : [];
+      setLocalDocs(arr);
+      onUploaded?.(arr.length);
+    } catch (err) {
+      Alert.alert('Upload Failed', err.message || 'Could not upload the file.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <View style={{ paddingTop: 4 }}>
+      <Card accent={C.red600}>
+        <SectionHead
+          icon="folder-open"
+          iconColor={C.red600}
+          title={`Documents (${count})`}
+          action={uploading ? null : 'Upload'}
+          onAction={handleUpload}
+        />
+
+        {uploading && (
+          <View style={dc.uploadingRow}>
+            <ActivityIndicator color={C.primary} size="small" />
+            <Text style={dc.uploadingTxt}>Uploading…</Text>
+          </View>
+        )}
+
+        {loading && !uploading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
+
+        {!loading && items.length === 0 && (
+          <TouchableOpacity style={dc.emptyUpload} onPress={handleUpload}>
+            <View style={dc.emptyUploadIcon}>
+              <FontAwesome5 name="cloud-upload-alt" size={28} color={C.primary} />
+            </View>
+            <Text style={dc.emptyUploadTitle}>No documents yet</Text>
+            <Text style={dc.emptyUploadSub}>Tap to upload the first document</Text>
+          </TouchableOpacity>
+        )}
+
+        {items.map(doc => (
+          <View key={doc.id} style={dc.row}>
+            <View style={[dc.iconBox, { backgroundColor: doc.iconBg }]}>
+              <FontAwesome5 name={doc.icon} size={20} color={C.white} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={dc.name} numberOfLines={1}>{doc.name}</Text>
+              <Text style={dc.meta}>{doc.size}{doc.size && ' · '}{doc.date}</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity
+                  style={[dc.btn, { backgroundColor: doc.url ? doc.iconBg : C.g300 }]}
+                  onPress={() => {
+                    if (!doc.url) { Alert.alert('Unavailable', 'No URL for this document.'); return; }
+                    WebBrowser.openBrowserAsync(doc.url);
+                  }}
+                >
+                  <FontAwesome5 name="eye" size={10} color={C.white} />
+                  <Text style={dc.btnTxt}>View</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[dc.btnOutline, { borderColor: doc.url ? doc.iconBg : C.g300 }]}
+                  onPress={() => {
+                    if (!doc.url) { Alert.alert('Unavailable', 'No URL for this document.'); return; }
+                    WebBrowser.openBrowserAsync(doc.url).catch(() =>
+                      Alert.alert('Error', 'Could not open the document.')
+                    );
+                  }}
+                >
+                  <FontAwesome5 name="download" size={10} color={doc.url ? doc.iconBg : C.g400} />
+                  <Text style={[dc.btnTxt, { color: doc.url ? doc.iconBg : C.g400 }]}>Download</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <TouchableOpacity style={{ padding: 6 }}>
+              <FontAwesome5 name="ellipsis-v" size={14} color={C.g400} />
             </TouchableOpacity>
           </View>
-        </View>
-        <TouchableOpacity style={{ padding:6 }}>
-          <FontAwesome5 name="ellipsis-v" size={14} color={C.g400} />
-        </TouchableOpacity>
-      </View>
-    ))}
-    <TouchableOpacity style={doc_s.viewAll}>
-      <FontAwesome5 name="folder-open" size={14} color={C.primary} />
-      <Text style={doc_s.viewAllText}>View All Documents ({CASE.stats.docs})</Text>
-    </TouchableOpacity>
-  </View>
-);
+        ))}
+      </Card>
+    </View>
+  );
+};
 
-const doc_s = StyleSheet.create({
-  card:         { flexDirection:'row', padding:14, backgroundColor:C.g50, borderRadius:16, marginBottom:10 },
-  cardPriority: { backgroundColor:'#FFF7F7', borderLeftWidth:4, borderLeftColor:C.red600 },
-  icon:         { width:50, height:50, borderRadius:14, alignItems:'center', justifyContent:'center', flexShrink:0 },
-  name:         { fontSize:13, fontWeight:'700', color:C.dark, marginBottom:3 },
-  meta:         { fontSize:11, color:C.g400 },
-  btn:          { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:12, paddingVertical:6, borderRadius:8 },
-  btnOutline:   { flexDirection:'row', alignItems:'center', gap:5, paddingHorizontal:12, paddingVertical:6, borderRadius:8, borderWidth:1, backgroundColor:C.white },
-  btnText:      { fontSize:11, fontWeight:'700', color:C.white },
-  viewAll:      { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8, backgroundColor:C.blue50, paddingVertical:13, borderRadius:14, marginTop:4 },
-  viewAllText:  { fontSize:13, fontWeight:'700', color:C.primary },
+const dc = StyleSheet.create({
+  row:              { flexDirection: 'row', backgroundColor: C.g50, borderRadius: 16, padding: 14, marginBottom: 10 },
+  iconBox:          { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  name:             { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 2 },
+  meta:             { fontSize: 11, color: C.g400 },
+  btn:              { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  btnOutline:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, backgroundColor: C.white },
+  uploadingRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.blue50, borderRadius: 12, padding: 12, marginBottom: 12 },
+  uploadingTxt:     { fontSize: 13, fontWeight: '600', color: C.primary },
+  emptyUpload:      { alignItems: 'center', paddingVertical: 28, gap: 8 },
+  emptyUploadIcon:  { width: 64, height: 64, borderRadius: 20, backgroundColor: C.blue50, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  emptyUploadTitle: { fontSize: 14, fontWeight: '700', color: C.dark },
+  emptyUploadSub:   { fontSize: 12, color: C.g400 },
+  btnTxt:     { fontSize: 11, fontWeight: '700', color: C.white },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: TASKS
 // ═════════════════════════════════════════════════════════════════════════════
-const TasksTab = () => {
-  const [tasks, setTasks] = useState(CASE.tasks);
+const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false }) => {
+  const [tasks, setTasks] = useState(propTasks.map(toTaskDisplay));
+  useEffect(() => { setTasks(propTasks.map(toTaskDisplay)); }, [propTasks]);
   const toggle = (id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
-  const pr = PRIORITY;
+  const count = stats.tasks ?? tasks.length;
+  const done  = tasks.filter(t => t.done).length;
+  const pct   = tasks.length > 0 ? done / tasks.length : 0;
 
   return (
-    <View style={card.wrap}>
-      <SectionHeader title={`Tasks (${CASE.stats.tasks})`} action="+ Add Task" />
-      {tasks.map(task => {
-        const p = pr[task.priority];
-        return (
-          <View key={task.id} style={[task_s.card, task.priority === 'urgent' && !task.done && task_s.cardUrgent, task.done && { opacity:0.5 }]}>
-            <TouchableOpacity onPress={() => toggle(task.id)} style={[task_s.checkbox, task.done && { backgroundColor:C.green600, borderColor:C.green600 }]}>
-              {task.done && <FontAwesome5 name="check" size={11} color={C.white} />}
-            </TouchableOpacity>
-            <View style={{ flex:1, marginLeft:12 }}>
-              <Text style={[task_s.title, task.done && task_s.titleDone]}>{task.title}</Text>
-              <Text style={[task_s.due, { color: task.done ? C.green600 : task.dueColor }]}>{task.due}</Text>
-              <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginTop:5 }}>
-                <Chip label={p.label} color={p.color} bg={p.bg} />
-                <Text style={task_s.assignee}>{task.assignee}</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={{ padding:6 }}>
-              <FontAwesome5 name="ellipsis-v" size={14} color={C.g400} />
-            </TouchableOpacity>
+    <View style={{ paddingTop: 4 }}>
+      {/* Progress overview */}
+      <Card accent={C.amber600}>
+        <SectionHead icon="tasks" iconColor={C.amber600} title={`Tasks (${count})`} action="+ Add Task" />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+          <View style={tk.progCircle}>
+            <Text style={tk.progPct}>{Math.round(pct * 100)}%</Text>
+            <Text style={tk.progSub}>done</Text>
           </View>
-        );
-      })}
-      <TouchableOpacity style={doc_s.viewAll}>
-        <FontAwesome5 name="tasks" size={14} color={C.primary} />
-        <Text style={doc_s.viewAllText}>View All Tasks ({CASE.stats.tasks})</Text>
-      </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={tk.progLabel}>{done} of {tasks.length} tasks completed</Text>
+            <View style={tk.progBarBg}>
+              <View style={[tk.progBarFill, { width: `${pct * 100}%` }]} />
+            </View>
+          </View>
+        </View>
+        {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
+        {!loading && tasks.length === 0 && (
+          <View style={ov.emptyBox}>
+            <FontAwesome5 name="check-double" size={28} color={C.g300} />
+            <Text style={ov.emptyTxt}>No tasks yet</Text>
+          </View>
+        )}
+        {!loading && tasks.map(task => {
+          const pr = PRIORITY[task.priority] || PRIORITY.normal;
+          return (
+            <View key={task.id} style={[tk.row, task.priority === 'urgent' && !task.done && { borderLeftColor: C.red600, borderLeftWidth: 3 }, task.done && { opacity: 0.5 }]}>
+              <TouchableOpacity
+                onPress={() => toggle(task.id)}
+                style={[tk.check, task.done && { backgroundColor: C.green600, borderColor: C.green600 }]}
+              >
+                {task.done && <FontAwesome5 name="check" size={11} color={C.white} />}
+              </TouchableOpacity>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[tk.title, task.done && { textDecorationLine: 'line-through', color: C.g400 }]}>{task.title}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                  <View style={[tk.duePill, { backgroundColor: task.dueColor + '18' }]}>
+                    <FontAwesome5 name="clock" size={9} color={task.dueColor} />
+                    <Text style={[tk.dueTxt, { color: task.dueColor }]}>{task.due}</Text>
+                  </View>
+                  <Badge label={pr.label} color={pr.color} bg={pr.bg} />
+                </View>
+                {task.assignee ? <Text style={tk.assignee}>{task.assignee}</Text> : null}
+              </View>
+              <TouchableOpacity style={{ padding: 6 }}>
+                <FontAwesome5 name="ellipsis-v" size={14} color={C.g400} />
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </Card>
     </View>
   );
 };
 
-const task_s = StyleSheet.create({
-  card:        { flexDirection:'row', alignItems:'flex-start', padding:14, backgroundColor:C.g50, borderRadius:16, marginBottom:10 },
-  cardUrgent:  { backgroundColor:'#FFF7F7', borderLeftWidth:4, borderLeftColor:C.red600 },
-  checkbox:    { width:24, height:24, borderRadius:7, borderWidth:2, borderColor:C.g300, alignItems:'center', justifyContent:'center', marginTop:2, flexShrink:0 },
-  title:       { fontSize:14, fontWeight:'700', color:C.dark, marginBottom:3 },
-  titleDone:   { textDecorationLine:'line-through', color:C.g400 },
-  due:         { fontSize:12, fontWeight:'600' },
-  assignee:    { fontSize:11, color:C.g500, fontWeight:'500' },
+const tk = StyleSheet.create({
+  progCircle:  { width: 64, height: 64, borderRadius: 32, backgroundColor: C.amber50, borderWidth: 3, borderColor: C.amber600, alignItems: 'center', justifyContent: 'center' },
+  progPct:     { fontSize: 16, fontWeight: '900', color: C.amber600 },
+  progSub:     { fontSize: 9, color: C.amber600, fontWeight: '600' },
+  progLabel:   { fontSize: 12, color: C.g600, fontWeight: '600', marginBottom: 8 },
+  progBarBg:   { height: 8, backgroundColor: C.g200, borderRadius: 4, overflow: 'hidden' },
+  progBarFill: { height: 8, borderRadius: 4, backgroundColor: C.amber600 },
+  row:         { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: C.g50, borderRadius: 16, padding: 14, marginBottom: 10 },
+  check:       { width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: C.g300, alignItems: 'center', justifyContent: 'center', marginTop: 2, flexShrink: 0 },
+  title:       { fontSize: 13, fontWeight: '700', color: C.dark },
+  duePill:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  dueTxt:      { fontSize: 10, fontWeight: '700' },
+  assignee:    { fontSize: 11, color: C.g500, marginTop: 5 },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: NOTES
 // ═════════════════════════════════════════════════════════════════════════════
-const NotesTab = () => (
-  <View style={card.wrap}>
-    <SectionHeader title={`Notes (${CASE.stats.notes})`} action="+ Add Note" />
-    {CASE.notes.map(note => (
-      <View key={note.id} style={[note_s.card, { backgroundColor: note.bg, borderLeftColor: note.borderColor }]}>
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-          <View style={{ flexDirection:'row', alignItems:'center', gap:10 }}>
-            <Image source={{ uri: note.avatar }} style={note_s.avatar} />
-            <View>
-              <Text style={note_s.noteName}>{note.author}</Text>
-              <Text style={note_s.noteTime}>{note.time}</Text>
-            </View>
+const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false }) => {
+  const items = propNotes.map(toNoteDisplay);
+  const count = stats.notes ?? items.length;
+  return (
+    <View style={{ paddingTop: 4 }}>
+      <Card accent={C.purple600}>
+        <SectionHead icon="sticky-note" iconColor={C.purple600} title={`Notes (${count})`} action="+ Add Note" />
+        {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
+        {!loading && items.length === 0 && (
+          <View style={ov.emptyBox}>
+            <FontAwesome5 name="sticky-note" size={28} color={C.g300} />
+            <Text style={ov.emptyTxt}>No notes yet</Text>
           </View>
-          <TouchableOpacity><FontAwesome5 name="ellipsis-v" size={14} color={C.g400} /></TouchableOpacity>
-        </View>
-        <Text style={note_s.noteTitle}>{note.title}</Text>
-        <Text style={note_s.noteContent} numberOfLines={3}>{note.content}</Text>
-        <TouchableOpacity style={note_s.readMore}>
-          <Text style={[note_s.readMoreText, { color: note.borderColor }]}>Read more</Text>
-          <FontAwesome5 name="chevron-right" size={10} color={note.borderColor} />
-        </TouchableOpacity>
-      </View>
-    ))}
-  </View>
-);
+        )}
+        {!loading && items.map(note => (
+          <View key={note.id} style={[nt.card, { backgroundColor: note.bg, borderLeftColor: note.borderColor }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+              {note.avatar ? (
+                <Image source={{ uri: note.avatar }} style={nt.avatar} />
+              ) : (
+                <View style={[nt.avatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+                  <FontAwesome5 name="user" size={14} color={C.primary} />
+                </View>
+              )}
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={nt.author}>{note.author}</Text>
+                <Text style={nt.time}>{note.time}</Text>
+              </View>
+              <TouchableOpacity>
+                <FontAwesome5 name="ellipsis-v" size={14} color={C.g400} />
+              </TouchableOpacity>
+            </View>
+            <Text style={nt.title}>{note.title}</Text>
+            <Text style={nt.content} numberOfLines={3}>{note.content}</Text>
+            <TouchableOpacity style={[nt.readMore, { borderTopColor: note.borderColor + '30' }]}>
+              <Text style={[nt.readMoreTxt, { color: note.borderColor }]}>Read more</Text>
+              <FontAwesome5 name="chevron-right" size={10} color={note.borderColor} />
+            </TouchableOpacity>
+          </View>
+        ))}
+      </Card>
+    </View>
+  );
+};
 
-const note_s = StyleSheet.create({
-  card:          { borderLeftWidth:4, borderRadius:16, padding:14, marginBottom:12 },
-  avatar:        { width:36, height:36, borderRadius:10 },
-  noteName:      { fontSize:13, fontWeight:'700', color:C.dark },
-  noteTime:      { fontSize:11, color:C.g400 },
-  noteTitle:     { fontSize:14, fontWeight:'800', color:C.dark, marginBottom:6 },
-  noteContent:   { fontSize:13, color:C.g600, lineHeight:20 },
-  readMore:      { flexDirection:'row', alignItems:'center', gap:4, marginTop:8 },
-  readMoreText:  { fontSize:12, fontWeight:'700' },
+const nt = StyleSheet.create({
+  card:       { borderLeftWidth: 4, borderRadius: 16, padding: 14, marginBottom: 12 },
+  avatar:     { width: 36, height: 36, borderRadius: 10 },
+  author:     { fontSize: 13, fontWeight: '700', color: C.dark },
+  time:       { fontSize: 10, color: C.g400, marginTop: 1 },
+  title:      { fontSize: 14, fontWeight: '800', color: C.dark, marginBottom: 6 },
+  content:    { fontSize: 13, color: C.g600, lineHeight: 20 },
+  readMore:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
+  readMoreTxt:{ fontSize: 12, fontWeight: '700' },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  TAB: INVOICES
+// ═════════════════════════════════════════════════════════════════════════════
+const STATUS_META = {
+  DRAFT:     { label: 'Draft',     color: C.g500,      bg: C.g100      },
+  PENDING:   { label: 'Pending',   color: C.amber600,  bg: C.amber50   },
+  PAID:      { label: 'Paid',      color: C.green600,  bg: C.green50   },
+  OVERDUE:   { label: 'Overdue',   color: C.red600,    bg: C.red50     },
+  CANCELLED: { label: 'Cancelled', color: C.g400,      bg: C.g100      },
+};
+
+const InvoicesTab = ({ invoices = [], loading = false }) => {
+  const totalAmount  = invoices.reduce((s, inv) => s + (inv.total_amount || 0), 0);
+  const paidAmount   = invoices.filter(i => i.status === 'PAID').reduce((s, i) => s + (i.total_amount || 0), 0);
+  const pendingCount = invoices.filter(i => i.status === 'PENDING' || i.status === 'OVERDUE').length;
+
+  const fmt = (n) => n?.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }) ?? '$0';
+
+  return (
+    <View style={{ paddingTop: 4 }}>
+
+      {/* Summary cards */}
+      {!loading && invoices.length > 0 && (
+        <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 12 }}>
+          {[
+            { label: 'Total Billed',  value: fmt(totalAmount), icon: 'file-invoice-dollar', color: C.primary,  bg: C.blue50   },
+            { label: 'Collected',     value: fmt(paidAmount),  icon: 'check-circle',        color: C.green600, bg: C.green50  },
+            { label: 'Pending',       value: `${pendingCount} inv.`, icon: 'clock',          color: C.amber600, bg: C.amber50  },
+          ].map(s => (
+            <View key={s.label} style={[inv_s.summaryCard, { backgroundColor: s.bg }]}>
+              <View style={[inv_s.summaryIcon, { backgroundColor: s.color + '22' }]}>
+                <FontAwesome5 name={s.icon} size={14} color={s.color} />
+              </View>
+              <Text style={[inv_s.summaryValue, { color: s.color }]}>{s.value}</Text>
+              <Text style={inv_s.summaryLabel}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Card accent={C.green600}>
+        <SectionHead icon="file-invoice-dollar" iconColor={C.green600} title={`Invoices (${invoices.length})`} />
+
+        {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
+
+        {!loading && invoices.length === 0 && (
+          <View style={ov.emptyBox}>
+            <FontAwesome5 name="file-invoice" size={28} color={C.g300} />
+            <Text style={ov.emptyTxt}>No invoices for this case</Text>
+          </View>
+        )}
+
+        {!loading && invoices.map((inv) => {
+          const meta     = STATUS_META[inv.status] || STATUS_META.DRAFT;
+          const dueDate  = inv.due_date
+            ? new Date(inv.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : '—';
+          const isOverdue = inv.status === 'OVERDUE';
+          const clientName = inv.client
+            ? `${inv.client.first_name || ''} ${inv.client.last_name || ''}`.trim()
+            : '—';
+
+          return (
+            <View key={inv.id} style={[inv_s.card, isOverdue && { borderLeftColor: C.red600, borderLeftWidth: 3 }]}>
+              {/* Top row */}
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 }}>
+                <View style={inv_s.invoiceIcon}>
+                  <FontAwesome5 name="file-invoice-dollar" size={18} color={C.green600} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={inv_s.invoiceNum}>{inv.invoice_number}</Text>
+                  <Text style={inv_s.clientName}>{clientName}</Text>
+                </View>
+                <View style={[inv_s.statusBadge, { backgroundColor: meta.bg }]}>
+                  <Text style={[inv_s.statusTxt, { color: meta.color }]}>{meta.label}</Text>
+                </View>
+              </View>
+
+              {/* Amount + due date */}
+              <View style={inv_s.amountRow}>
+                <View>
+                  <Text style={inv_s.amountLabel}>Total Amount</Text>
+                  <Text style={inv_s.amountValue}>{fmt(inv.total_amount)}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={inv_s.amountLabel}>Due Date</Text>
+                  <Text style={[inv_s.dueDate, isOverdue && { color: C.red600 }]}>
+                    {isOverdue && <FontAwesome5 name="exclamation-circle" size={10} color={C.red600} />}
+                    {' '}{dueDate}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Items preview */}
+              {inv.invoice_item && inv.invoice_item.length > 0 && (
+                <View style={inv_s.itemsBox}>
+                  {inv.invoice_item.slice(0, 2).map((item, idx) => (
+                    <View key={idx} style={inv_s.itemRow}>
+                      <Text style={inv_s.itemDesc} numberOfLines={1}>{item.description}</Text>
+                      <Text style={inv_s.itemPrice}>{fmt(item.quantity * item.unit_price)}</Text>
+                    </View>
+                  ))}
+                  {inv.invoice_item.length > 2 && (
+                    <Text style={inv_s.itemMore}>+{inv.invoice_item.length - 2} more items</Text>
+                  )}
+                </View>
+              )}
+
+              {/* Actions */}
+              <View style={inv_s.actions}>
+                <TouchableOpacity style={inv_s.actionBtn}>
+                  <FontAwesome5 name="eye" size={11} color={C.primary} />
+                  <Text style={[inv_s.actionTxt, { color: C.primary }]}>View</Text>
+                </TouchableOpacity>
+                {inv.status === 'DRAFT' && (
+                  <TouchableOpacity style={[inv_s.actionBtn, { backgroundColor: C.green50 }]}>
+                    <FontAwesome5 name="paper-plane" size={11} color={C.green600} />
+                    <Text style={[inv_s.actionTxt, { color: C.green600 }]}>Send</Text>
+                  </TouchableOpacity>
+                )}
+                {(inv.status === 'PENDING' || inv.status === 'OVERDUE') && (
+                  <TouchableOpacity style={[inv_s.actionBtn, { backgroundColor: C.amber50 }]}>
+                    <FontAwesome5 name="bell" size={11} color={C.amber600} />
+                    <Text style={[inv_s.actionTxt, { color: C.amber600 }]}>Remind</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })}
+      </Card>
+    </View>
+  );
+};
+
+const inv_s = StyleSheet.create({
+  // Summary cards
+  summaryCard:  { flex: 1, borderRadius: 16, padding: 12, alignItems: 'center', gap: 4 },
+  summaryIcon:  { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  summaryValue: { fontSize: 15, fontWeight: '900' },
+  summaryLabel: { fontSize: 10, color: C.g500, fontWeight: '600', textAlign: 'center' },
+
+  // Invoice card
+  card:         { backgroundColor: C.g50, borderRadius: 16, padding: 14, marginBottom: 10 },
+  invoiceIcon:  { width: 46, height: 46, borderRadius: 13, backgroundColor: C.green50, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  invoiceNum:   { fontSize: 14, fontWeight: '800', color: C.dark },
+  clientName:   { fontSize: 12, color: C.g500, marginTop: 2 },
+  statusBadge:  { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statusTxt:    { fontSize: 11, fontWeight: '800' },
+
+  // Amount row
+  amountRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', backgroundColor: C.white, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 10 },
+  amountLabel:  { fontSize: 10, color: C.g400, fontWeight: '600', marginBottom: 3 },
+  amountValue:  { fontSize: 20, fontWeight: '900', color: C.dark },
+  dueDate:      { fontSize: 13, fontWeight: '700', color: C.dark },
+
+  // Items
+  itemsBox:     { borderTopWidth: 1, borderTopColor: C.g200, paddingTop: 10, marginBottom: 10 },
+  itemRow:      { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  itemDesc:     { fontSize: 12, color: C.g600, flex: 1 },
+  itemPrice:    { fontSize: 12, fontWeight: '700', color: C.dark, marginLeft: 8 },
+  itemMore:     { fontSize: 11, color: C.g400, fontStyle: 'italic' },
+
+  // Actions
+  actions:      { flexDirection: 'row', gap: 8 },
+  actionBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.blue50, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
+  actionTxt:    { fontSize: 12, fontWeight: '700' },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: TIMELINE
 // ═════════════════════════════════════════════════════════════════════════════
-const TimelineTab = () => (
-  <View style={card.wrap}>
-    <SectionHeader title="Case Timeline & Activity" action="+ Add Event" />
-    {CASE.timeline.map((item, idx) => (
-      <View key={item.id} style={tl.row}>
-        <View style={tl.left}>
-          <View style={[tl.dot, { backgroundColor: item.bg }]}>
-            <FontAwesome5 name={item.icon} size={13} color={item.color} />
+const TimelineTab = ({ timeline: propTimeline = [], loading = false }) => {
+  const items = propTimeline.map(toTimelineDisplay);
+  return (
+    <View style={{ paddingTop: 4 }}>
+      <Card>
+        <SectionHead icon="stream" iconColor={C.primary} title="Case Timeline" />
+        {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
+        {!loading && items.length === 0 && (
+          <View style={ov.emptyBox}>
+            <FontAwesome5 name="history" size={28} color={C.g300} />
+            <Text style={ov.emptyTxt}>No activity yet</Text>
           </View>
-          {idx < CASE.timeline.length - 1 && <View style={tl.line} />}
-        </View>
-        <View style={tl.content}>
-          <View style={tl.contentHeader}>
-            <Text style={tl.title}>{item.title}</Text>
-            <Text style={tl.time}>{item.time}</Text>
+        )}
+        {!loading && items.map((item, idx) => (
+          <View key={item.id} style={tl.row}>
+            <View style={tl.spine}>
+              <View style={[tl.dot, { backgroundColor: item.bg }]}>
+                <FontAwesome5 name={item.icon} size={12} color={item.color} />
+              </View>
+              {idx < items.length - 1 && <View style={tl.line} />}
+            </View>
+            <View style={tl.content}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Text style={tl.title} numberOfLines={2}>{item.title}</Text>
+                <Text style={tl.time}>{item.time}</Text>
+              </View>
+              {item.desc ? <Text style={tl.desc}>{item.desc}</Text> : null}
+              <Badge label={item.badge} color={item.badgeColor} bg={item.badgeBg} size={10} />
+            </View>
           </View>
-          <Text style={tl.desc}>{item.desc}</Text>
-          <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginTop:6 }}>
-            <Chip label={item.badge} color={item.badgeColor} bg={item.badgeBg} />
-            <TouchableOpacity><Text style={tl.link}>View Details</Text></TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    ))}
-  </View>
-);
+        ))}
+      </Card>
+    </View>
+  );
+};
 
 const tl = StyleSheet.create({
-  row:           { flexDirection:'row', marginBottom:0 },
-  left:          { alignItems:'center', marginRight:14, width:40 },
-  dot:           { width:40, height:40, borderRadius:12, alignItems:'center', justifyContent:'center', flexShrink:0, shadowColor:'#000', shadowOpacity:0.1, shadowRadius:4, elevation:2 },
-  line:          { width:2, flex:1, backgroundColor:C.g200, marginVertical:4 },
-  content:       { flex:1, paddingBottom:20 },
-  contentHeader: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:4 },
-  title:         { fontSize:13, fontWeight:'700', color:C.dark, flex:1, marginRight:8 },
-  time:          { fontSize:11, color:C.g400, flexShrink:0 },
-  desc:          { fontSize:12, color:C.g500, lineHeight:18 },
-  link:          { fontSize:12, fontWeight:'700', color:C.primary },
-});
-
-// ─── SHARED CARD STYLE ────────────────────────────────────────────────────────
-const card = StyleSheet.create({
-  wrap: { backgroundColor:C.white, marginHorizontal:16, marginBottom:12, borderRadius:20, padding:16, shadowColor:'#000', shadowOpacity:0.05, shadowRadius:8, elevation:2, borderWidth:1, borderColor:C.g100 },
-});
-
-// ─── FORM STYLES ──────────────────────────────────────────────────────────────
-const form_s = StyleSheet.create({
-  field:       { marginBottom:14 },
-  label:       { fontSize:12, fontWeight:'700', color:C.g600, marginBottom:6 },
-  input:       { borderWidth:1.5, borderColor:C.g200, borderRadius:12, paddingHorizontal:14, paddingVertical:11, fontSize:14, color:C.dark, backgroundColor:C.white },
-  readonly:    { backgroundColor:C.g50, borderColor:C.g100 },
-  selectRow:   { flexDirection:'row', alignItems:'center', justifyContent:'space-between' },
-  selectText:  { fontSize:14, color:C.dark },
-  priorityRow: { flexDirection:'row', gap:6 },
-  priorityBtn: { flex:1, paddingVertical:10, borderRadius:12, alignItems:'center', gap:4, flexDirection:'row', justifyContent:'center' },
-  priorityText:{ fontSize:11, fontWeight:'700' },
-  twoCol:      { flexDirection:'row' },
-  tagsRow:     { flexDirection:'row', flexWrap:'wrap', gap:8 },
-  tagChip:     { flexDirection:'row', alignItems:'center', backgroundColor:C.blue50, paddingHorizontal:12, paddingVertical:6, borderRadius:20 },
-  tagAdd:      { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:C.g100, paddingHorizontal:12, paddingVertical:6, borderRadius:20 },
-  tagText:     { fontSize:12, fontWeight:'600', color:C.primary },
+  row:     { flexDirection: 'row', marginBottom: 4 },
+  spine:   { alignItems: 'center', width: 40, marginRight: 14 },
+  dot:     { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  line:    { width: 2, flex: 1, backgroundColor: C.g200, marginVertical: 4 },
+  content: { flex: 1, paddingBottom: 22 },
+  title:   { fontSize: 13, fontWeight: '700', color: C.dark, flex: 1, marginRight: 8, marginBottom: 3 },
+  time:    { fontSize: 10, color: C.g400, flexShrink: 0, paddingTop: 2 },
+  desc:    { fontSize: 12, color: C.g500, lineHeight: 17, marginBottom: 8 },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -673,200 +1141,291 @@ export default function CaseDetailsScreen({ navigation, route }) {
   const caseData = route?.params?.caseData || CASE;
   const pr = PRIORITY[caseData.priority] || PRIORITY.urgent;
 
-  const [activeTab, setActiveTab] = useState('overview');
-  const [editMode,  setEditMode]  = useState(false);
-  const [form, setForm] = useState({
-    title:      caseData.title,
-    caseType:   caseData.type,
-    phase:      caseData.phase,
-    priority:   caseData.priority,
-    court:      caseData.court,
-    judge:      caseData.judge,
-    attorney:   caseData.attorney,
-    description:caseData.description,
-    filingDate: caseData.filingDate,
-    nextHearing:'2024-03-16',
-    tags:       [...caseData.tags],
+  const [activeTab,  setActiveTab]  = useState('overview');
+  const [editMode,   setEditMode]   = useState(false);
+  const [documents,  setDocuments]  = useState([]);
+  const [tasks,      setTasks]      = useState([]);
+  const [notes,      setNotes]      = useState([]);
+  const [timeline,   setTimeline]   = useState([]);
+  const [events,     setEvents]     = useState([]);
+  const [invoices,   setInvoices]   = useState([]);
+  const [stats,      setStats]      = useState(caseData.stats || { docs: 0, tasks: 0, events: 0, notes: 0 });
+  const [tabLoading, setTabLoading] = useState(false);
+  const [saving,     setSaving]     = useState(false);
+
+  const initialFormRef = React.useRef({
+    title:       caseData.title,
+    caseType:    caseData.type,
+    phase:       caseData.phase,
+    priority:    caseData.priority,
+    court:       caseData.court,
+    judge:       caseData.judge,
+    attorney:    caseData.attorney,
+    description: caseData.description,
+    filingDate:  caseData.filingDate,
+    nextHearing: caseData.nextHearing?.label || '',
+    tags:        [...(caseData.tags || [])],
   });
+
+  const [form, setForm] = useState(initialFormRef.current);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const caseId = caseData._id;
+      if (caseId) {
+        // Build body with only fields the backend accepts (UpdateCaseRequest)
+        const body = {};
+        if (form.title)       body.title        = form.title;
+        if (form.description) body.description  = form.description;
+        if (form.priority)    body.priority     = form.priority.toUpperCase();
+        if (form.court)       body.court_name   = form.court;
+        if (form.filingDate)  body.filing_date  = form.filingDate;
+        if (form.nextHearing) body.first_hearing_date = form.nextHearing;
+        // case_type must match enum (CRIMINAL, CIVIL, etc.) — only send if already uppercase
+        if (form.caseType && /^[A-Z_]+$/.test(form.caseType)) {
+          body.case_type = form.caseType;
+        }
+        await casesAPI.update(caseId, body);
+      }
+      setEditMode(false);
+      Alert.alert('Saved', 'Changes saved successfully.');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to save changes.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDiscard = () => {
+    setForm(initialFormRef.current);
+    setEditMode(false);
+  };
+
+  useEffect(() => {
+    const caseId = caseData._id;
+    if (!caseId) return;
+    let cancelled = false;
+    const fetchAll = async () => {
+      setTabLoading(true);
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const [tl, tk, docs, nts, evts, invs] = await Promise.all([
+          casesAPI.getTimeline(caseId).catch(() => []),
+          tasksAPI.list({ case_id: caseId }).catch(() => []),
+          documentsAPI.list({ case_id: caseId }).catch(() => []),
+          notesAPI.list({ case_id: caseId }).catch(() => []),
+          calendarAPI.listEvents({ case_id: caseId, from_date: today }).catch(() => []),
+          billingAPI.listInvoices({ case_id: caseId }).catch(() => []),
+        ]);
+        if (cancelled) return;
+        const safeArr = (v) => (Array.isArray(v) ? v : []);
+        const tlArr   = safeArr(tl);
+        const tkArr   = safeArr(tk);
+        const docsArr = safeArr(docs);
+        const ntsArr  = safeArr(nts);
+        const evtsArr = safeArr(evts);
+        const invsArr = safeArr(invs);
+        setTimeline(tlArr);
+        setTasks(tkArr);
+        setDocuments(docsArr);
+        setNotes(ntsArr);
+        setEvents(evtsArr);
+        setInvoices(invsArr);
+        setStats({ docs: docsArr.length, tasks: tkArr.length, events: evtsArr.length, notes: ntsArr.length });
+      } finally {
+        if (!cancelled) setTabLoading(false);
+      }
+    };
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [caseData._id]);
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview':  return <OverviewTab  caseData={caseData} editMode={editMode} form={form} setForm={setForm} />;
-      case 'documents': return <DocumentsTab />;
-      case 'tasks':     return <TasksTab />;
-      case 'notes':     return <NotesTab />;
-      case 'timeline':  return <TimelineTab />;
+      case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} />;
+      case 'documents': return <DocumentsTab documents={documents} stats={stats} loading={tabLoading} caseId={caseData._id} onUploaded={(n) => setStats(s => ({ ...s, docs: n }))} />;
+      case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} />;
+      case 'invoices':  return <InvoicesTab  invoices={invoices}            loading={tabLoading} />;
+      case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} />;
+      case 'timeline':  return <TimelineTab  timeline={timeline}            loading={tabLoading} />;
     }
+  };
+
+  const tabCounts = {
+    overview:  null,
+    documents: stats.docs,
+    tasks:     stats.tasks,
+    invoices:  invoices.length || null,
+    notes:     stats.notes,
+    timeline:  null,
   };
 
   return (
     <SafeAreaView style={sc.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={C.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={C.slate900} />
 
-      {/* ─── HEADER ─────────────────────────────────────────────── */}
+      {/* ── DARK HEADER ─────────────────────────────────────────── */}
       <View style={sc.header}>
-        {/* Row 1 */}
-        <View style={sc.headerRow}>
-          <TouchableOpacity style={sc.headerBtn} onPress={() => navigation?.goBack?.()}>
-            <FontAwesome5 name="arrow-left" size={16} color={C.white} />
+
+        {/* Nav row */}
+        <View style={sc.navRow}>
+          <TouchableOpacity style={sc.navBtn} onPress={() => navigation?.goBack?.()}>
+            <FontAwesome5 name="arrow-left" size={15} color={C.white} />
           </TouchableOpacity>
-          <View style={{ flex:1, alignItems:'center' }}>
-            <Text style={sc.headerTitle}>Case Details</Text>
-            <Text style={sc.headerSub}>{caseData.id}</Text>
+          <Text style={sc.navTitle}>Case Details</Text>
+        </View>
+
+        {/* Badges row */}
+        <View style={sc.badgeRow}>
+          <View style={[sc.priPill, { backgroundColor: pr.color }]}>
+            <View style={sc.priDot} />
+            <Text style={sc.priTxt}>{pr.label.toUpperCase()}</Text>
           </View>
-          <View style={{ flexDirection:'row', gap:8 }}>
-            <TouchableOpacity style={sc.headerBtn}>
-              <FontAwesome5 name="share-nodes" size={14} color={C.white} />
-            </TouchableOpacity>
-            <TouchableOpacity style={[sc.headerBtn, { position:'relative' }]}>
-              <FontAwesome5 name="bell" size={14} color={C.white} />
-              <View style={sc.notifDot} />
-            </TouchableOpacity>
+          <View style={sc.typePill}>
+            <Text style={sc.typeTxt}>{caseData.type}</Text>
+          </View>
+          <View style={sc.typePill}>
+            <Text style={sc.typeTxt}>{caseData.phase}</Text>
           </View>
         </View>
 
-        {/* Case identity card inside header */}
-        <View style={sc.caseCard}>
-          <View style={{ flexDirection:'row', alignItems:'flex-start', gap:14 }}>
-            <View style={[sc.caseIcon, { backgroundColor: pr.color }]}>
-              <FontAwesome5 name="gavel" size={22} color={C.white} />
-            </View>
-            <View style={{ flex:1 }}>
-              <View style={{ flexDirection:'row', alignItems:'center', gap:6, marginBottom:6 }}>
-                <View style={[sc.priorityBadge, { backgroundColor: pr.color }]}>
-                  <FontAwesome5 name={pr.icon} size={9} color={C.white} />
-                  <Text style={sc.priorityText}>{pr.label}</Text>
-                </View>
-                <View style={sc.typeBadge}>
-                  <Text style={sc.typeText}>{caseData.type}</Text>
-                </View>
-                <View style={sc.typeBadge}>
-                  <Text style={sc.typeText}>{caseData.phase}</Text>
-                </View>
-              </View>
-              <Text style={sc.caseTitle}>{caseData.title}</Text>
-              <Text style={sc.caseSub}>{caseData.subtitle}</Text>
-            </View>
-          </View>
+        {/* Hero title */}
+        <Text style={sc.heroTitle}>{caseData.title}</Text>
+        <Text style={sc.heroSub}>{caseData.subtitle}</Text>
 
-          {/* Hearing alert row */}
-          {caseData.nextHearing && (
-            <View style={sc.hearingRow}>
-              <FontAwesome5 name="calendar-exclamation" size={12} color="#FCA5A5" />
-              <Text style={sc.hearingText}>
-                Hearing {caseData.nextHearing.label} · {caseData.nextHearing.time} · {caseData.nextHearing.room}
+        {/* Stats pills */}
+        <View style={sc.statsPills}>
+          {[
+            { icon: 'file-alt',    value: stats.docs,   label: 'Docs',   color: '#60A5FA' },
+            { icon: 'check-square',value: stats.tasks,  label: 'Tasks',  color: '#FCD34D' },
+            { icon: 'calendar',    value: stats.events, label: 'Events', color: '#6EE7B7' },
+            { icon: 'sticky-note', value: stats.notes,  label: 'Notes',  color: '#C4B5FD' },
+          ].map(s => (
+            <View key={s.label} style={sc.statPill}>
+              <FontAwesome5 name={s.icon} size={12} color={s.color} />
+              <Text style={[sc.statNum, { color: s.color }]}>{s.value ?? 0}</Text>
+              <Text style={sc.statLbl}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+
+      </View>
+
+      {/* ── CLIENT STRIP ──────────────────────────────────────────── */}
+      <View style={sc.clientStrip}>
+        <View style={sc.clientLeft}>
+          {caseData.client?.avatar ? (
+            <Image source={{ uri: caseData.client.avatar }} style={sc.clientAvatar} />
+          ) : (
+            <View style={[sc.clientAvatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: C.primary }}>
+                {(caseData.client?.name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
               </Text>
-              <View style={sc.countdown}>
-                <Text style={sc.countdownText}>{caseData.nextHearing.countdown}</Text>
-              </View>
             </View>
           )}
-        </View>
-      </View>
-
-      {/* ─── STATS ROW ──────────────────────────────────────────── */}
-      <View style={sc.statsRow}>
-        {[
-          { icon:'file-alt',    iconColor:C.primary,   bg:C.blue50,   value:caseData.stats.docs,   label:'Docs'   },
-          { icon:'tasks',       iconColor:C.amber600,  bg:C.amber50,  value:caseData.stats.tasks,  label:'Tasks'  },
-          { icon:'calendar',    iconColor:C.green600,  bg:C.green50,  value:caseData.stats.events, label:'Events' },
-          { icon:'sticky-note', iconColor:C.purple600, bg:C.purple50, value:caseData.stats.notes,  label:'Notes'  },
-        ].map((s, i) => (
-          <View key={i} style={[sc.statItem, { backgroundColor: s.bg }]}>
-            <FontAwesome5 name={s.icon} size={14} color={s.iconColor} style={{ marginBottom:4 }} />
-            <Text style={[sc.statValue, { color: s.iconColor }]}>{s.value}</Text>
-            <Text style={sc.statLabel}>{s.label}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* ─── CLIENT CARD ────────────────────────────────────────── */}
-      <View style={sc.clientCard}>
-        <Image source={{ uri: caseData.client.avatar }} style={sc.clientAvatar} />
-        <View style={{ flex:1, marginLeft:12 }}>
-          <Text style={sc.clientName}>{caseData.client.name}</Text>
-          <Text style={sc.clientMeta}>ID: {caseData.client.id} · Since {caseData.client.since}</Text>
-          <View style={{ flexDirection:'row', gap:6, marginTop:5 }}>
-            <Chip label={caseData.client.status} color={C.primary}   bg={C.blue50}  />
-            <Chip label={caseData.client.tier}   color={C.green600}  bg={C.green50} />
-          </View>
-        </View>
-        <View style={{ gap:8 }}>
-          <TouchableOpacity style={[sc.contactBtn, { backgroundColor:C.green50 }]}>
-            <FontAwesome5 name="whatsapp" size={15} color={C.green600} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[sc.contactBtn, { backgroundColor:C.blue50 }]}>
-            <FontAwesome5 name="phone" size={14} color={C.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[sc.contactBtn, { backgroundColor:C.purple50 }]}>
-            <FontAwesome5 name="envelope" size={13} color={C.purple600} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* ─── QUICK ACTIONS ──────────────────────────────────────── */}
-      <View style={sc.quickActions}>
-        {[
-          { icon:'edit',      label:'Edit',    color:C.primary,   bg:C.blue50,    active: editMode, onPress:() => setEditMode(e => !e) },
-          { icon:'file-alt',  label:'Docs',    color:C.purple600, bg:C.purple50,  active:false, onPress:() => setActiveTab('documents') },
-          { icon:'tasks',     label:'Tasks',   color:C.amber600,  bg:C.amber50,   active:false, onPress:() => setActiveTab('tasks') },
-          { icon:'robot',     label:'AI',      color:C.indigo600, bg:'#EEF2FF',   active:false, onPress:() => {} },
-          { icon:'print',     label:'Print',   color:C.teal600,   bg:'#F0FDFA',   active:false, onPress:() => {} },
-          { icon:'archive',   label:'Archive', color:C.g500,      bg:C.g100,      active:false, onPress:() => {} },
-        ].map((q, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[sc.qaBtn, { backgroundColor: q.active ? C.primary : q.bg }]}
-            onPress={q.onPress}
-          >
-            <View style={[sc.qaIconWrap, { backgroundColor: q.active ? 'rgba(255,255,255,0.25)' : q.bg }]}>
-              <FontAwesome5 name={q.icon} size={15} color={q.active ? C.white : q.color} />
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={sc.clientName}>{caseData.client.name}</Text>
+            <Text style={sc.clientMeta}>{caseData.client.id} · {caseData.client.since}</Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
+              <Badge label={caseData.client.status} color={C.primary}  bg={C.blue50}  />
+              <Badge label={caseData.client.tier}   color={C.green600} bg={C.green50} />
             </View>
-            <Text style={[sc.qaLabel, { color: q.active ? C.white : q.color }]}>{q.label}</Text>
+          </View>
+        </View>
+        <View style={sc.clientActions}>
+          <TouchableOpacity style={[sc.contactCircle, { backgroundColor: C.green50 }]}>
+            <FontAwesome5 name="phone" size={13} color={C.green600} />
           </TouchableOpacity>
-        ))}
+          <TouchableOpacity style={[sc.contactCircle, { backgroundColor: C.blue50 }]}>
+            <FontAwesome5 name="envelope" size={12} color={C.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[sc.contactCircle, { backgroundColor: C.purple50 }]}>
+            <FontAwesome5 name="comment" size={12} color={C.purple600} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* ─── TABS BAR ───────────────────────────────────────────── */}
+      {/* ── QUICK ACTIONS ─────────────────────────────────────────── */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={sc.tabsBar}
-        contentContainerStyle={{ paddingHorizontal:16, gap:8, paddingVertical:10 }}
+        style={sc.actionBar}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 10 }}
       >
-        {TABS.map(t => {
-          const active = activeTab === t.key;
-          return (
-            <TouchableOpacity
-              key={t.key}
-              style={[sc.tabBtn, active && sc.tabBtnActive]}
-              onPress={() => setActiveTab(t.key)}
-            >
-              <FontAwesome5 name={t.icon} size={12} color={active ? C.white : C.g500} />
-              <Text style={[sc.tabLabel, active && sc.tabLabelActive]}>{t.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+        {[
+          { icon: 'edit',       label: 'Edit',    color: C.primary,   bg: C.blue50,   active: editMode, onPress: () => setEditMode(e => !e) },
+          { icon: 'file-alt',   label: 'Docs',    color: C.red600,    bg: C.red50,    active: false,    onPress: () => setActiveTab('documents') },
+          { icon: 'check-square', label: 'Tasks', color: C.amber600,  bg: C.amber50,  active: false,    onPress: () => setActiveTab('tasks') },
+          { icon: 'robot',      label: 'AI',      color: C.indigo600, bg: '#EEF2FF',  active: false,    onPress: () => {} },
+          { icon: 'print',      label: 'Print',   color: C.teal600,   bg: '#F0FDFA',  active: false,    onPress: () => {} },
+          { icon: 'archive',    label: 'Archive', color: C.g500,      bg: C.g100,     active: false,    onPress: () => {} },
+        ].map((q, i) => (
+          <TouchableOpacity
+            key={i}
+            style={[sc.actionBtn, q.active && { backgroundColor: C.primary }]}
+            onPress={q.onPress}
+          >
+            <View style={[sc.actionIcon, { backgroundColor: q.active ? 'rgba(255,255,255,0.25)' : q.bg }]}>
+              <FontAwesome5 name={q.icon} size={14} color={q.active ? C.white : q.color} />
+            </View>
+            <Text style={[sc.actionLabel, { color: q.active ? C.white : q.color }]}>{q.label}</Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      {/* ─── SCROLLABLE CONTENT ─────────────────────────────────── */}
+      {/* ── TAB BAR ───────────────────────────────────────────────── */}
+      <View style={sc.tabBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+        >
+          {TABS.map(t => {
+            const active = activeTab === t.key;
+            const count  = tabCounts[t.key];
+            return (
+              <TouchableOpacity
+                key={t.key}
+                style={[sc.tabPill, active && sc.tabPillActive]}
+                onPress={() => setActiveTab(t.key)}
+              >
+                <FontAwesome5 name={t.icon} size={11} color={active ? C.white : C.g500} />
+                <Text style={[sc.tabPillTxt, active && sc.tabPillTxtActive]}>{t.label}</Text>
+                {count != null && count > 0 && (
+                  <View style={[sc.tabCount, { backgroundColor: active ? 'rgba(255,255,255,0.3)' : C.g200 }]}>
+                    <Text style={[sc.tabCountTxt, { color: active ? C.white : C.g600 }]}>{count}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* ── SCROLLABLE CONTENT ────────────────────────────────────── */}
       <ScrollView
         style={sc.scroll}
-        contentContainerStyle={{ paddingTop:12, paddingBottom:40 }}
+        contentContainerStyle={{ paddingTop: 8, paddingBottom: 50 }}
         showsVerticalScrollIndicator={false}
       >
         {renderTab()}
       </ScrollView>
 
-      {/* ─── FOOTER EDIT MODE ───────────────────────────────────── */}
+      {/* ── EDIT MODE FOOTER ──────────────────────────────────────── */}
       {editMode && (
         <View style={sc.footer}>
-          <TouchableOpacity style={sc.footerCancel} onPress={() => setEditMode(false)}>
-            <Text style={sc.footerCancelText}>Cancel</Text>
+          <TouchableOpacity style={sc.footerCancel} onPress={handleDiscard} disabled={saving}>
+            <Text style={sc.footerCancelTxt}>Discard</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={sc.footerSave} onPress={() => setEditMode(false)}>
-            <FontAwesome5 name="save" size={14} color={C.white} />
-            <Text style={sc.footerSaveText}>Save Changes</Text>
+          <TouchableOpacity style={[sc.footerSave, saving && { opacity: 0.7 }]} onPress={handleSave} disabled={saving}>
+            {saving
+              ? <ActivityIndicator color={C.white} size="small" />
+              : <>
+                  <FontAwesome5 name="check" size={14} color={C.white} />
+                  <Text style={sc.footerSaveTxt}>Save Changes</Text>
+                </>
+            }
           </TouchableOpacity>
         </View>
       )}
@@ -876,61 +1435,61 @@ export default function CaseDetailsScreen({ navigation, route }) {
 
 // ─── SCREEN STYLES ────────────────────────────────────────────────────────────
 const sc = StyleSheet.create({
-  safe:   { flex:1, backgroundColor:C.primary },
-  scroll: { flex:1, backgroundColor:C.g50 },
+  safe:   { flex: 1, backgroundColor: C.slate900 },
+  scroll: { flex: 1, backgroundColor: C.bg },
 
   // Header
-  header:        { backgroundColor:C.primary, paddingHorizontal:16, paddingTop:10, paddingBottom:16 },
-  headerRow:     { flexDirection:'row', alignItems:'center', marginBottom:14 },
-  headerBtn:     { width:40, height:40, borderRadius:12, backgroundColor:'rgba(255,255,255,0.2)', alignItems:'center', justifyContent:'center' },
-  headerTitle:   { fontSize:17, fontWeight:'800', color:C.white },
-  headerSub:     { fontSize:11, color:'rgba(255,255,255,0.7)', marginTop:1 },
-  notifDot:      { position:'absolute', top:7, right:7, width:8, height:8, borderRadius:4, backgroundColor:C.red500, borderWidth:1.5, borderColor:C.primary },
+  header:    { backgroundColor: C.slate900, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 20 },
+  navRow:    { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
+  navBtn:    { width: 38, height: 38, borderRadius: 11, backgroundColor: C.glass, alignItems: 'center', justifyContent: 'center' },
+  navTitle:  { fontSize: 17, fontWeight: '800', color: C.white },
 
-  // Case card in header
-  caseCard:      { backgroundColor:'rgba(255,255,255,0.12)', borderRadius:18, padding:16, borderWidth:1, borderColor:'rgba(255,255,255,0.2)' },
-  caseIcon:      { width:54, height:54, borderRadius:16, alignItems:'center', justifyContent:'center', flexShrink:0, shadowColor:'#000', shadowOpacity:0.2, shadowRadius:6, elevation:4 },
-  priorityBadge: { flexDirection:'row', alignItems:'center', gap:4, paddingHorizontal:9, paddingVertical:4, borderRadius:20 },
-  priorityText:  { fontSize:10, fontWeight:'800', color:C.white },
-  typeBadge:     { backgroundColor:'rgba(255,255,255,0.2)', paddingHorizontal:9, paddingVertical:4, borderRadius:20 },
-  typeText:      { fontSize:10, fontWeight:'600', color:C.white },
-  caseTitle:     { fontSize:19, fontWeight:'800', color:C.white, marginBottom:3 },
-  caseSub:       { fontSize:12, color:'rgba(255,255,255,0.72)' },
-  hearingRow:    { flexDirection:'row', alignItems:'center', gap:8, marginTop:12, backgroundColor:'rgba(220,38,38,0.3)', borderRadius:12, paddingHorizontal:12, paddingVertical:9 },
-  hearingText:   { flex:1, fontSize:12, color:'#FCA5A5', fontWeight:'600' },
-  countdown:     { backgroundColor:C.red600, paddingHorizontal:10, paddingVertical:4, borderRadius:20 },
-  countdownText: { fontSize:11, fontWeight:'800', color:C.white },
+  // Badges
+  badgeRow:  { flexDirection: 'row', gap: 7, marginBottom: 14, alignItems: 'center' },
+  priPill:   { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  priDot:    { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.7)' },
+  priTxt:    { fontSize: 10, fontWeight: '900', color: C.white, letterSpacing: 0.8 },
+  typePill:  { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: C.glassB },
+  typeTxt:   { fontSize: 10, fontWeight: '600', color: C.onDarkSub },
 
-  // Stats
-  statsRow:  { flexDirection:'row', backgroundColor:C.white, paddingHorizontal:16, paddingVertical:12, gap:10, borderBottomWidth:1, borderBottomColor:C.g100 },
-  statItem:  { flex:1, borderRadius:14, paddingVertical:10, alignItems:'center' },
-  statValue: { fontSize:18, fontWeight:'800' },
-  statLabel: { fontSize:10, fontWeight:'600', color:C.g500, marginTop:1 },
+  // Hero
+  heroTitle: { fontSize: 26, fontWeight: '900', color: C.white, lineHeight: 32, marginBottom: 4 },
+  heroSub:   { fontSize: 13, color: C.onDarkSub, marginBottom: 18 },
 
-  // Client
-  clientCard:   { flexDirection:'row', alignItems:'flex-start', backgroundColor:C.white, paddingHorizontal:16, paddingVertical:14, borderBottomWidth:1, borderBottomColor:C.g100 },
-  clientAvatar: { width:56, height:56, borderRadius:16, borderWidth:2.5, borderColor:C.primary },
-  clientName:   { fontSize:15, fontWeight:'800', color:C.dark },
-  clientMeta:   { fontSize:11, color:C.g400, marginTop:1 },
-  contactBtn:   { width:34, height:34, borderRadius:10, alignItems:'center', justifyContent:'center' },
+  // Stats pills
+  statsPills:{ flexDirection: 'row', gap: 8 },
+  statPill:  { flex: 1, flexDirection: 'column', alignItems: 'center', gap: 3, backgroundColor: C.glassB, borderRadius: 14, paddingVertical: 10 },
+  statNum:   { fontSize: 18, fontWeight: '900' },
+  statLbl:   { fontSize: 9, color: C.onDarkMuted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  // Quick actions
-  quickActions: { flexDirection:'row', backgroundColor:C.white, paddingHorizontal:12, paddingVertical:10, gap:4, borderBottomWidth:1, borderBottomColor:C.g100 },
-  qaBtn:        { flex:1, borderRadius:12, paddingVertical:8, alignItems:'center', gap:3 },
-  qaIconWrap:   { width:36, height:36, borderRadius:10, alignItems:'center', justifyContent:'center' },
-  qaLabel:      { fontSize:9, fontWeight:'700' },
+  // Client strip
+  clientStrip:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.white, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  clientLeft:    { flexDirection: 'row', alignItems: 'flex-start', flex: 1 },
+  clientAvatar:  { width: 52, height: 52, borderRadius: 16, borderWidth: 2.5, borderColor: C.primary },
+  clientName:    { fontSize: 15, fontWeight: '800', color: C.dark },
+  clientMeta:    { fontSize: 10, color: C.g400, marginTop: 2, fontWeight: '500' },
+  clientActions: { flexDirection: 'row', gap: 8, marginLeft: 10 },
+  contactCircle: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
 
-  // Tabs
-  tabsBar:       { backgroundColor:C.white, borderBottomWidth:1, borderBottomColor:C.g100, maxHeight:52, flexGrow:0 },
-  tabBtn:        { flexDirection:'row', alignItems:'center', gap:6, paddingHorizontal:14, paddingVertical:8, borderRadius:20, backgroundColor:C.g100 },
-  tabBtnActive:  { backgroundColor:C.primary, shadowColor:C.primary, shadowOpacity:0.35, shadowRadius:6, elevation:4 },
-  tabLabel:      { fontSize:12, fontWeight:'700', color:C.g500 },
-  tabLabelActive:{ color:C.white },
+  // Action bar
+  actionBar:  { backgroundColor: C.white, maxHeight: 72, flexGrow: 0, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  actionBtn:  { alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+  actionIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  actionLabel:{ fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // Tab bar
+  tabBar:       { backgroundColor: C.white, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.g100 },
+  tabPill:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 22, backgroundColor: C.g100 },
+  tabPillActive:{ backgroundColor: C.primary, shadowColor: C.primary, shadowOpacity: 0.4, shadowRadius: 6, elevation: 4 },
+  tabPillTxt:   { fontSize: 12, fontWeight: '700', color: C.g500 },
+  tabPillTxtActive: { color: C.white },
+  tabCount:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, minWidth: 20, alignItems: 'center' },
+  tabCountTxt:  { fontSize: 10, fontWeight: '800' },
 
   // Footer
-  footer:           { flexDirection:'row', gap:12, paddingHorizontal:16, paddingVertical:14, backgroundColor:C.white, borderTopWidth:1, borderTopColor:C.g100 },
-  footerCancel:     { paddingHorizontal:20, paddingVertical:14, borderRadius:14, borderWidth:1.5, borderColor:C.g200, alignItems:'center', justifyContent:'center' },
-  footerCancelText: { fontSize:14, fontWeight:'700', color:C.g600 },
-  footerSave:       { flex:1, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8, backgroundColor:C.primary, paddingVertical:14, borderRadius:14, shadowColor:C.primary, shadowOpacity:0.35, shadowRadius:8, elevation:4 },
-  footerSaveText:   { fontSize:15, fontWeight:'800', color:C.white },
+  footer:          { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.g100 },
+  footerCancel:    { paddingHorizontal: 20, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: C.g200, alignItems: 'center', justifyContent: 'center' },
+  footerCancelTxt: { fontSize: 14, fontWeight: '700', color: C.g600 },
+  footerSave:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.primary, paddingVertical: 14, borderRadius: 14, shadowColor: C.primary, shadowOpacity: 0.35, shadowRadius: 8, elevation: 4 },
+  footerSaveTxt:   { fontSize: 15, fontWeight: '800', color: C.white },
 });

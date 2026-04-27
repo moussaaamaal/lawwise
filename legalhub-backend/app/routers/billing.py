@@ -70,6 +70,7 @@ async def billing_analytics(current_user=Depends(get_lawyer)):
 async def list_invoices(
     status: Optional[str] = None,
     client_id: Optional[str] = None,
+    case_id: Optional[str] = None,
     current_user=Depends(get_current_user)
 ):
     query = (
@@ -92,6 +93,8 @@ async def list_invoices(
         query = query.eq("status", status)
     if client_id:
         query = query.eq("client_id", client_id)
+    if case_id:
+        query = query.eq("case_id", case_id)
 
     result = query.order("created_at", desc=True).execute()
     return result.data
