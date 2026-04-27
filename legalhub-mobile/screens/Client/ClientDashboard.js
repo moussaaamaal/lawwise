@@ -62,18 +62,21 @@ function AppointmentCard({ event }) {
 }
 
 export default function ClientDashboard({ navigation }) {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError]     = useState(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
+    setError(null);
     try {
       const d = await clientPortalAPI.dashboard();
       setData(d);
     } catch (e) {
       console.error(e);
+      setError(e.message || 'Failed to load dashboard');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -102,7 +105,7 @@ export default function ClientDashboard({ navigation }) {
             {client ? `${client.first_name} ${client.last_name}` : user?.full_name || 'Client'}
           </Text>
         </View>
-        <TouchableOpacity style={s.avatarCircle} onPress={signOut}>
+        <TouchableOpacity style={s.avatarCircle} onPress={() => navigation.navigate('ClientProfile')}>
           <FontAwesome5 name="user" size={18} color={C.white} />
         </TouchableOpacity>
       </View>
@@ -110,6 +113,17 @@ export default function ClientDashboard({ navigation }) {
       {loading ? (
         <View style={s.center}>
           <ActivityIndicator size="large" color={C.primary} />
+        </View>
+      ) : error ? (
+        <View style={s.center}>
+          <FontAwesome5 name="exclamation-circle" size={36} color={C.g400} />
+          <Text style={[s.emptyTxt, { marginTop: 12 }]}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => load()}
+            style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12 }}
+          >
+            <Text style={{ color: C.white, fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView
@@ -129,9 +143,6 @@ export default function ClientDashboard({ navigation }) {
           {/* Upcoming Appointments */}
           <View style={s.sectionHeader}>
             <Text style={s.sectionTitle}>Upcoming Appointments</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('ClientAppointments')}>
-              <Text style={s.seeAll}>See all</Text>
-            </TouchableOpacity>
           </View>
           {data?.upcoming_appointments?.length > 0 ? (
             data.upcoming_appointments.map((ev) => (

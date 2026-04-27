@@ -96,6 +96,14 @@ export default function AuthScreen() {
       }
 
       const data = await authAPI.login(savedEmail, savedPass);
+
+      if (data.requires_2fa) {
+        setTwoFATempToken(data.temp_token);
+        setTwoFACode('');
+        setTwoFAModal(true);
+        return;
+      }
+
       await signIn(data.access_token, data.refresh_token, data.user);
     } catch (err) {
       Alert.alert('Error', err.message || 'Biometric authentication failed.');

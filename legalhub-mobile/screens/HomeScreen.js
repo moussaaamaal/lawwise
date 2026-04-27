@@ -1,38 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  Image, StyleSheet, SafeAreaView, StatusBar, Dimensions, Linking, Alert, ActivityIndicator,
+  Image, StyleSheet, SafeAreaView, StatusBar, Dimensions,
+  Linking, Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { FontAwesome5, Ionicons, MaterialIcons, Feather, FontAwesome } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppPrefs } from '../context/AppPrefsContext';
-import { dashboardAPI } from '../services/api';
+import {
+  dashboardAPI, notificationsAPI,
+  tasksAPI, documentsAPI, clientsAPI, casesAPI,
+} from '../services/api';
 
-import AddCaseScreen from './Cases/AddCaseScreen';
-import CaseDetailsScreen from './Cases/CaseDetailsScreen';
-import AddClientScreen from './Clients/AddClientScreen';
-import UploadDocumentScreen from './Documents/UploadDocumentScreen';
-import AddNoteScreen from './TasksNotes/AddNoteScreen';
-import AIAssistantScreen from './AI/AIAssistantScreen';
-import ScheduleScreen from './Schedule/ScheduleScreen';
-import InvoiceScreen from './Invoices/InvoiceScreen';
-import VoiceNoteScreen from './TasksNotes/VoiceNoteScreen';
-import AddTaskScreen from './TasksNotes/AddTaskScreen';
-import NotificationsScreen from './Notifications/NotificationsScreen';
-import InvoicesManagementScreen from './Invoices/InvoicesManagementScreen';
-import ClientsManagementScreen from './Clients/ClientsManagementScreen';
+import AddCaseScreen              from './Cases/AddCaseScreen';
+import CaseDetailsScreen          from './Cases/CaseDetailsScreen';
+import AddClientScreen            from './Clients/AddClientScreen';
+import UploadDocumentScreen       from './Documents/UploadDocumentScreen';
+import AddNoteScreen              from './TasksNotes/AddNoteScreen';
+import AIAssistantScreen          from './AI/AIAssistantScreen';
+import ScheduleScreen             from './Schedule/ScheduleScreen';
+import InvoiceScreen              from './Invoices/InvoiceScreen';
+import VoiceNoteScreen            from './TasksNotes/VoiceNoteScreen';
+import AddTaskScreen              from './TasksNotes/AddTaskScreen';
+import NotificationsScreen        from './Notifications/NotificationsScreen';
+import InvoicesManagementScreen   from './Invoices/InvoicesManagementScreen';
+import ClientsManagementScreen    from './Clients/ClientsManagementScreen';
 import TasksNotesManagementScreen from './TasksNotes/TasksNotesManagementScreen';
-import AllScheduleScreen from './Schedule/AllScheduleScreen';
-import AllCasesScreen from './Cases/AllCasesScreen';
-import AllTasksScreen from './TasksNotes/AllTasksScreen';
-import AllDocumentsScreen from './Documents/AllDocumentsScreen';
+import AllScheduleScreen          from './Schedule/AllScheduleScreen';
+import AllCasesScreen             from './Cases/AllCasesScreen';
+import AllTasksScreen             from './TasksNotes/AllTasksScreen';
+import AllDocumentsScreen         from './Documents/AllDocumentsScreen';
 
 // ─── COULEURS ────────────────────────────────────────────────────────────────
 const COLORS = {
   primary: '#1E40AF', secondary: '#3B82F6', accent: '#60A5FA',
   dark: '#1E293B', light: '#F8FAFC', white: '#FFFFFF',
   gray50: '#F9FAFB', gray100: '#F3F4F6', gray200: '#E5E7EB',
-  gray400: '#9CA3AF', gray500: '#6B7280', gray600: '#4B5563', gray700: '#374151',
+  gray300: '#D1D5DB', gray400: '#9CA3AF', gray500: '#6B7280', gray600: '#4B5563', gray700: '#374151',
   red50: '#FEF2F2', red100: '#FEE2E2', red500: '#EF4444', red600: '#DC2626',
   amber50: '#FFFBEB', amber100: '#FEF3C7', amber500: '#F59E0B', amber600: '#D97706',
   green50: '#F0FDF4', green100: '#DCFCE7', green500: '#22C55E', green600: '#16A34A',
@@ -43,6 +47,65 @@ const COLORS = {
 };
 
 const W = Dimensions.get('window').width;
+
+// ─── TIMEZONE HELPERS ────────────────────────────────────────────────────────
+const APP_TZ_OFFSET_H = 0; // no UTC conversion — display exactly as stored
+
+const parseDate = (iso) => {
+  if (!iso) return new Date(NaN);
+  const s = iso.trim().replace(' ', 'T');
+  const m = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)([+-])(\d{2}):?(\d{2})$/);
+  if (m) {
+    const baseMs = new Date(m[1] + 'Z').getTime();
+    const sign   = m[2] === '+' ? -1 : 1;
+    const offMs  = (parseInt(m[3]) * 60 + parseInt(m[4])) * 60000;
+    return new Date(baseMs + sign * offMs);
+  }
+  if (s.endsWith('Z')) return new Date(s);
+  return new Date(s + 'Z');
+};
+
+const localH = (d) => (d.getUTCHours() + APP_TZ_OFFSET_H) % 24;
+const localM = (d) => d.getUTCMinutes();
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const getDocIconStyle = (fileType) => {
+  if (!fileType) return { iconName: 'file-alt',   iconColor: COLORS.gray600,   iconBg: COLORS.gray100   };
+  const t = fileType.toLowerCase();
+  if (t.includes('pdf'))                    return { iconName: 'file-pdf',   iconColor: COLORS.red600,    iconBg: COLORS.red100    };
+  if (t.includes('doc') || t.includes('word'))  return { iconName: 'file-word',  iconColor: COLORS.blue600,   iconBg: COLORS.blue100   };
+  if (t.includes('xls') || t.includes('excel')) return { iconName: 'file-excel', iconColor: COLORS.green600,  iconBg: COLORS.green100  };
+  if (t.includes('png') || t.includes('jpg') || t.includes('jpeg') || t.includes('image'))
+    return { iconName: 'file-image', iconColor: COLORS.purple600, iconBg: COLORS.purple100 };
+  return { iconName: 'file-alt', iconColor: COLORS.gray600, iconBg: COLORS.gray100 };
+};
+
+const formatRelativeDate = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  const today = new Date();
+  const diff = Math.floor((today - d) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7)  return `${diff}d ago`;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+};
+
+const getDueBadge = (dueDate, priority) => {
+  if (!dueDate) {
+    return {
+      badge: 'Pending', badgeColor: COLORS.amber600, badgeBg: COLORS.amber50,
+      borderColor: COLORS.amber500, timeColor: COLORS.amber600,
+    };
+  }
+  const today = new Date().toISOString().split('T')[0];
+  if (dueDate < today)   return { badge: 'Overdue',   badgeColor: COLORS.red600,   badgeBg: COLORS.red50,   borderColor: COLORS.red500,   timeColor: COLORS.red600   };
+  if (dueDate === today) return { badge: 'Due Today',  badgeColor: COLORS.red600,   badgeBg: COLORS.red50,   borderColor: COLORS.red500,   timeColor: COLORS.red600   };
+  if (priority === 'URGENT' || priority === 'HIGH')
+    return { badge: 'Urgent', badgeColor: COLORS.red600, badgeBg: COLORS.red50, borderColor: COLORS.red500, timeColor: COLORS.red600 };
+  return { badge: 'Pending', badgeColor: COLORS.amber600, badgeBg: COLORS.amber50, borderColor: COLORS.amber500, timeColor: COLORS.amber600 };
+};
 
 // ─── COMPOSANT ICÔNE ─────────────────────────────────────────────────────────
 const Icon = ({ lib = 'FA5', name, size = 18, color = COLORS.dark }) => {
@@ -58,10 +121,10 @@ const Icon = ({ lib = 'FA5', name, size = 18, color = COLORS.dark }) => {
 
 // ─── SCHEDULE : CONFIG PRIORITÉ ──────────────────────────────────────────────
 const PRIORITY_CONFIG = {
-  urgent: { label: 'Urgent',        color: COLORS.red600,   bg: COLORS.red50,   border: COLORS.red500,    timeBg: COLORS.red100   },
-  high:   { label: 'High Priority', color: COLORS.red600,   bg: COLORS.red50,   border: COLORS.red500,    timeBg: COLORS.red100   },
-  medium: { label: 'Medium',        color: COLORS.amber600, bg: COLORS.amber50, border: COLORS.amber500,  timeBg: COLORS.amber100 },
-  normal: { label: 'Normal',        color: COLORS.blue600,  bg: COLORS.blue50,  border: COLORS.secondary, timeBg: COLORS.blue100  },
+  urgent: { label: 'Urgent',        color: COLORS.red600,   bg: COLORS.red50,   border: COLORS.red500,   timeBg: COLORS.red100   },
+  high:   { label: 'High Priority', color: COLORS.amber600, bg: COLORS.amber50, border: COLORS.amber500, timeBg: COLORS.amber100 },
+  medium: { label: 'Medium',        color: COLORS.blue600,  bg: COLORS.blue50,  border: COLORS.secondary,timeBg: COLORS.blue100  },
+  normal: { label: 'Normal',        color: COLORS.green600, bg: COLORS.green50, border: COLORS.green600, timeBg: COLORS.green100 },
 };
 
 // ─── SCHEDULE : GÉNÉRATEUR D'ACTIONS ─────────────────────────────────────────
@@ -125,139 +188,12 @@ const getEventActions = (event, navigateTo) => {
   return actions;
 };
 
-// ─── DONNÉES SCHEDULE ─────────────────────────────────────────────────────────
-const SCHEDULE = [
-  {
-    id: 'evt-001', type: 'court_hearing',
-    time: '09:30', period: 'AM',
-    title: 'Criminal Court Hearing', subtitle: 'State vs. Johnson - Room 204',
-    priority: 'urgent', case_id: 'CR-2024-1247',
-    location: 'Manhattan Criminal Court, 100 Centre St, New York',
-    client: { name: 'Marcus Johnson', phone: '+1234567890', email: 'marcus@example.com', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg' },
-    tag: 'Criminal Law',
-  },
-  {
-    id: 'evt-002', type: 'client_meeting',
-    time: '11:00', period: 'AM',
-    title: 'Client Meeting', subtitle: 'Contract Review - Office',
-    priority: 'medium', case_id: 'CV-2024-0892', location: null,
-    client: { name: 'Sarah Mitchell', phone: '+1987654321', email: 'sarah@mitchell.com', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg' },
-    tag: 'Corporate',
-  },
-  {
-    id: 'evt-003', type: 'document_submission',
-    time: '02:00', period: 'PM',
-    title: 'Document Submission', subtitle: 'Civil Court - Case #2024-567',
-    priority: 'normal', case_id: 'CV-2024-0567', location: null,
-    client: { name: 'Robert Chen', phone: '+1122334455', email: 'robert@chen.com', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg' },
-    tag: 'Civil Law',
-  },
-];
-
-// ─── DONNÉES CASES ────────────────────────────────────────────────────────────
-// Chaque objet contient TOUS les champs requis par CaseDetailsScreen.
-// Le bug "Cannot convert undefined value to object" venait du fait que
-// CaseDetailsScreen accédait à des champs (type, phase, tags, client.id, etc.)
-// absents des anciens objets CASES. Ils sont maintenant tous présents.
-const CASES = [
-  {
-    // Champs affichage HomeScreen
-    id: 'CR-2024-1247',
-    badge: 'Urgent', badgeColor: COLORS.red600, badgeBg: COLORS.red50,
-    col1Label: 'Next Hearing', col1Val: 'Today',
-    col2Label: 'Documents',   col2Val: '23',
-    col3Label: 'Tasks',       col3Val: '5 Pending',
-    actions: [
-      { iconLib: 'FA5', iconName: 'robot',    bg: COLORS.blue50,  color: COLORS.primary  },
-      { iconLib: 'FA',  iconName: 'whatsapp', bg: COLORS.green50, color: COLORS.green600 },
-    ],
-    // Champs requis par CaseDetailsScreen
-    title:       'State vs. Johnson',
-    subtitle:    'Criminal Defense — Assault Charges',
-    type:        'Criminal Law',
-    phase:       'Trial Phase',
-    priority:    'urgent',
-    status:      'Active',
-    filingDate:  '2024-01-15',
-    court:       'Manhattan Criminal Court',
-    judge:       'Hon. Patricia Williams',
-    prosecutor:  'DA Robert Chen',
-    attorney:    'Sarah Williams - Lead Attorney',
-    caseValue:   '$45,000',
-    description: 'Client is charged with assault in the second degree following an altercation at a local establishment. The prosecution alleges intentional harm, while the defense maintains self-defense. Key evidence includes surveillance footage and witness testimonies.',
-    tags:        ['Criminal Law', 'Self Defense', 'Trial'],
-    nextHearing: { label: 'Today', time: '09:30 AM', room: 'Room 305', countdown: '2h 47m' },
-    stats:       { docs: 23, tasks: 5, events: 8, notes: 12 },
-    timeTracking:{ billable: 47.5, nonBillable: 12.3 },
-    client: {
-      name: 'Marcus Johnson', id: 'CL-2024-089',
-      avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg',
-      since: 'January 15, 2024', phone: '+1 (555) 234-5678',
-      email: 'm.johnson@email.com', address: '742 Evergreen Terrace, Springfield',
-      status: 'Active', tier: 'Verified',
-    },
-  },
-  {
-    // Champs affichage HomeScreen
-    id: 'CV-2024-0892',
-    badge: 'Medium', badgeColor: COLORS.amber600, badgeBg: COLORS.amber50,
-    col1Label: 'Next Hearing', col1Val: 'Mar 18',
-    col2Label: 'Documents',   col2Val: '47',
-    col3Label: 'Tasks',       col3Val: '3 Pending',
-    actions: [
-      { iconLib: 'FA5', iconName: 'robot',    bg: COLORS.blue50,   color: COLORS.primary   },
-      { iconLib: 'FA5', iconName: 'envelope', bg: COLORS.purple50, color: COLORS.purple600 },
-    ],
-    // Champs requis par CaseDetailsScreen
-    title:       'Mitchell Corp. Contract Dispute',
-    subtitle:    'Corporate Law — Breach of Contract',
-    type:        'Corporate Law',
-    phase:       'Discovery Phase',
-    priority:    'medium',
-    status:      'Active',
-    filingDate:  '2024-02-10',
-    court:       'New York Civil Court',
-    judge:       'Hon. James Whitfield',
-    prosecutor:  'N/A',
-    attorney:    'Michael Chen - Lead Attorney',
-    caseValue:   '$120,000',
-    description: 'Mitchell Corp. alleges breach of contract by a former supplier. The dispute centers around delivery failures and financial damages incurred. Settlement negotiations are ongoing.',
-    tags:        ['Corporate Law', 'Breach of Contract', 'Discovery'],
-    nextHearing: { label: 'Mar 18', time: '11:00 AM', room: 'Room 12', countdown: '12d 3h' },
-    stats:       { docs: 47, tasks: 3, events: 5, notes: 8 },
-    timeTracking:{ billable: 32.0, nonBillable: 8.5 },
-    client: {
-      name: 'Sarah Mitchell', id: 'CL-2024-042',
-      avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg',
-      since: 'February 10, 2024', phone: '+1 (555) 987-6543',
-      email: 's.mitchell@corp.com', address: '200 Park Avenue, New York',
-      status: 'Active', tier: 'Premium',
-    },
-  },
-];
-
-const STATS = [
-  { iconLib: 'FA5', iconName: 'briefcase', iconColor: COLORS.primary,   count: '24', label: 'Active Cases',  badge: '+3',    badgeColor: COLORS.green600,  badgeBg: COLORS.green50,  iconBg: COLORS.blue100   },
-  { iconLib: 'FA5', iconName: 'gavel',     iconColor: COLORS.purple600, count: '3',  label: 'Hearings',      badge: 'Today', badgeColor: COLORS.orange600, badgeBg: COLORS.orange50, iconBg: COLORS.purple100 },
-  { iconLib: 'FA5', iconName: 'tasks',     iconColor: COLORS.amber600,  count: '12', label: 'Pending Tasks', badge: 'Urgent',badgeColor: COLORS.red600,    badgeBg: COLORS.red50,    iconBg: COLORS.amber100  },
-  { iconLib: 'FA5', iconName: 'file-alt',  iconColor: COLORS.green600,  count: '8',  label: 'Documents',     badge: 'New',   badgeColor: COLORS.blue600,   badgeBg: COLORS.blue50,   iconBg: COLORS.green100  },
-];
-
-const MANAGEMENT_ACTIONS = [
-  { screen: 'ClientsManagement',    icon: 'users',               iconLib: 'FA5', label: 'Clients',       sublabel: 'Management', color: COLORS.purple600, bg: COLORS.purple50, accent: COLORS.purple100, badge: '47',     badgeLabel: 'Total',   badgeColor: COLORS.purple600, badgeBg: COLORS.purple100 },
-  { screen: 'TasksNotesManagement', icon: 'tasks',               iconLib: 'FA5', label: 'Tasks & Notes', sublabel: 'Management', color: COLORS.amber600,  bg: COLORS.amber50,  accent: COLORS.amber100,  badge: '12',     badgeLabel: 'Pending', badgeColor: COLORS.amber600,  badgeBg: COLORS.amber100  },
-  { screen: 'InvoicesManagement',   icon: 'file-invoice-dollar', iconLib: 'FA5', label: 'Invoices',      sublabel: '& Payments', color: COLORS.teal600,   bg: '#F0FDFA',       accent: '#CCFBF1',        badge: '7',      badgeLabel: 'Overdue', badgeColor: COLORS.red600,    badgeBg: COLORS.red50     },
-  { screen: 'AIAssistant',          icon: 'robot',               iconLib: 'FA5', label: 'AI Assistant',  sublabel: 'Legal AI',   color: COLORS.indigo600, bg: '#EEF2FF',       accent: '#C7D2FE',        badge: 'Online', badgeLabel: '',        badgeColor: COLORS.green600,  badgeBg: COLORS.green50   },
-];
-
-const TASKS = [
-  { title: 'File Motion to Dismiss',    badge: 'Due Today',    badgeColor: COLORS.red600,   badgeBg: COLORS.red50,   subtitle: 'State vs. Johnson - Criminal Case', caseId: 'CR-2024-1247', timeLeft: '3 hours left', timeColor: COLORS.red600,   borderColor: COLORS.red500,   action: null },
-  { title: 'Review Contract Amendment', badge: 'Due Tomorrow', badgeColor: COLORS.amber600, badgeBg: COLORS.amber50, subtitle: 'Mitchell Corp. - Corporate Law',     caseId: 'CV-2024-0892', timeLeft: null,           timeColor: null,            borderColor: COLORS.amber500, action: { iconLib: 'FA5', iconName: 'robot', label: 'AI Review', color: COLORS.primary, bg: COLORS.blue50 } },
-];
-
-const DOCUMENTS = [
-  { iconLib: 'FA5', iconName: 'file-pdf',  iconColor: COLORS.red600,  iconBg: COLORS.red100,  name: 'Motion to Dismiss - Draft v3.pdf', case: 'State vs. Johnson', size: '2.4 MB', date: 'Today, 2:30 PM',  action: { iconLib: 'FA5', iconName: 'robot', label: 'Summarize', color: COLORS.primary,   bg: COLORS.blue50   } },
-  { iconLib: 'FA5', iconName: 'file-word', iconColor: COLORS.blue600, iconBg: COLORS.blue100, name: 'Contract Amendment - Final.docx',   case: 'Mitchell Corp.',    size: '1.8 MB', date: 'Today, 11:15 AM', action: { iconLib: 'FA5', iconName: 'eye',   label: 'View',      color: COLORS.purple600, bg: COLORS.purple50 } },
+// ─── STATIC FALLBACK (réseau indisponible uniquement) ────────────────────────
+const STATS_FALLBACK = [
+  { iconLib: 'FA5', iconName: 'briefcase',          iconColor: COLORS.primary,   count: '—', label: 'Active Cases',  badge: '—', badgeColor: COLORS.gray500,  badgeBg: COLORS.gray100, iconBg: COLORS.blue100   },
+  { iconLib: 'FA5', iconName: 'gavel',              iconColor: COLORS.purple600, count: '—', label: 'Hearings',      badge: '—', badgeColor: COLORS.gray500,  badgeBg: COLORS.gray100, iconBg: COLORS.purple100 },
+  { iconLib: 'FA5', iconName: 'tasks',              iconColor: COLORS.amber600,  count: '—', label: 'Pending Tasks', badge: '—', badgeColor: COLORS.gray500,  badgeBg: COLORS.gray100, iconBg: COLORS.amber100  },
+  { iconLib: 'FA5', iconName: 'check-circle',       iconColor: COLORS.green600,  count: '—', label: 'Closed Cases',  badge: '—', badgeColor: COLORS.gray500,  badgeBg: COLORS.gray100, iconBg: COLORS.green100  },
 ];
 
 // ─── COMPOSANTS ──────────────────────────────────────────────────────────────
@@ -265,6 +201,13 @@ const SectionHeader = ({ title, action, onAction }) => (
   <View style={styles.sectionHeader}>
     <Text style={styles.sectionTitle}>{title}</Text>
     {action && <TouchableOpacity onPress={onAction}><Text style={styles.sectionAction}>{action}</Text></TouchableOpacity>}
+  </View>
+);
+
+const EmptyState = ({ icon, lib = 'FA5', text }) => (
+  <View style={styles.emptyState}>
+    <Icon lib={lib} name={icon} size={32} color={COLORS.gray400} />
+    <Text style={styles.emptyStateText}>{text}</Text>
   </View>
 );
 
@@ -291,7 +234,9 @@ const ManagementCard = ({ item, onPress }) => (
     <Text style={[styles.mgmtLabel, { color: item.color }]}>{item.label}</Text>
     <Text style={styles.mgmtSublabel}>{item.sublabel}</Text>
     <View style={[styles.mgmtBadge, { backgroundColor: item.badgeBg }]}>
-      <Text style={[styles.mgmtBadgeText, { color: item.badgeColor }]}>{item.badge}{item.badgeLabel ? ` ${item.badgeLabel}` : ''}</Text>
+      <Text style={[styles.mgmtBadgeText, { color: item.badgeColor }]}>
+        {item.badge}{item.badgeLabel ? ` ${item.badgeLabel}` : ''}
+      </Text>
     </View>
     <View style={[styles.mgmtArrow, { backgroundColor: item.accent }]}>
       <FontAwesome5 name="arrow-right" size={9} color={item.color} />
@@ -299,40 +244,81 @@ const ManagementCard = ({ item, onPress }) => (
   </TouchableOpacity>
 );
 
+const EVENT_TYPE_ICON = {
+  court_hearing:       'gavel',
+  hearing:             'gavel',
+  meeting:             'handshake',
+  client_meeting:      'handshake',
+  internal_meeting:    'users',
+  consultation:        'comments',
+  deadline:            'clock',
+  filing:              'file-alt',
+  document_submission: 'file-upload',
+  mediation:           'balance-scale',
+  arbitration:         'balance-scale',
+  deposition:          'microphone',
+};
+
 const ScheduleCard = ({ event, navigateTo }) => {
-  const pCfg = PRIORITY_CONFIG[event.priority] || PRIORITY_CONFIG.normal;
+  const pCfg    = PRIORITY_CONFIG[event.priority] || PRIORITY_CONFIG.normal;
   const actions = getEventActions(event, navigateTo);
+  const typeIcon = EVENT_TYPE_ICON[event.type] || 'calendar-alt';
+
   return (
-    <View style={[styles.card, { borderLeftWidth: 4, borderLeftColor: pCfg.border }]}>
-      <View style={styles.scheduleTop}>
-        <View style={[styles.scheduleTime, { backgroundColor: pCfg.timeBg }]}>
-          <Text style={[styles.scheduleTimeText, { color: pCfg.color }]}>{event.time}</Text>
-          <Text style={[styles.schedulePeriod,   { color: pCfg.color }]}>{event.period}</Text>
+    <View style={ev.card}>
+      {/* ── Header coloré ── */}
+      <View style={[ev.header, { backgroundColor: pCfg.timeBg }]}>
+        <View style={ev.headerLeft}>
+          <View style={[ev.iconCircle, { backgroundColor: pCfg.color + '22' }]}>
+            <FontAwesome5 name={typeIcon} size={13} color={pCfg.color} />
+          </View>
+          <Text style={[ev.timeText, { color: pCfg.color }]}>
+            {event.time} <Text style={ev.timePeriod}>{event.period}</Text>
+          </Text>
         </View>
-        <View style={styles.scheduleInfo}>
-          <Text style={styles.cardTitle}>{event.title}</Text>
-          <Text style={styles.cardSubtitle}>{event.subtitle}</Text>
-          <View style={styles.row}>
-            <View style={[styles.tag, { backgroundColor: pCfg.bg }]}>
-              <Text style={[styles.tagText, { color: pCfg.color }]}>{pCfg.label}</Text>
-            </View>
-            {event.tag ? (
-              <View style={[styles.tag, { backgroundColor: COLORS.gray100, marginLeft: 6 }]}>
-                <Text style={[styles.tagText, { color: COLORS.gray600 }]}>{event.tag}</Text>
-              </View>
-            ) : null}
+        {event.tag ? (
+          <View style={[ev.typePill, { backgroundColor: pCfg.color + '18', borderColor: pCfg.color + '40' }]}>
+            <Text style={[ev.typePillText, { color: pCfg.color }]} numberOfLines={1}>
+              {event.tag.replace(/_/g, ' ')}
+            </Text>
+          </View>
+        ) : (
+          <View style={[ev.typePill, { backgroundColor: pCfg.color + '18', borderColor: pCfg.color + '40' }]}>
+            <Text style={[ev.typePillText, { color: pCfg.color }]}>{pCfg.label}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── Corps ── */}
+      <View style={ev.body}>
+        <Text style={ev.title} numberOfLines={1}>{event.title}</Text>
+        {event.subtitle ? (
+          <View style={[styles.row, { marginTop: 4 }]}>
+            <FontAwesome5 name="map-marker-alt" size={10} color={COLORS.gray400} />
+            <Text style={ev.subText} numberOfLines={1}> {event.subtitle}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* ── Footer ── */}
+      <View style={ev.footer}>
+        <View style={[styles.row, { flex: 1 }]}>
+          <View style={ev.clientChip}>
+            <FontAwesome5 name="user-circle" size={12} color={COLORS.gray400} />
+            <Text style={ev.clientChipText} numberOfLines={1}>
+              {event.client?.name || 'No client'}
+            </Text>
           </View>
         </View>
-      </View>
-      <View style={styles.scheduleBottom}>
         <View style={styles.row}>
-          {event.client?.avatar ? <Image source={{ uri: event.client.avatar }} style={styles.avatarSm} /> : null}
-          <Text style={styles.clientName}>{event.client?.name || '—'}</Text>
-        </View>
-        <View style={styles.row}>
-          {actions.map((a) => (
-            <TouchableOpacity key={a.key} style={[styles.iconBtn, { backgroundColor: a.bg, marginLeft: 6 }]} onPress={a.onPress} activeOpacity={0.7}>
-              <Icon lib={a.iconLib} name={a.iconName} size={14} color={a.color} />
+          {actions.slice(0, 3).map((a) => (
+            <TouchableOpacity
+              key={a.key}
+              style={[ev.actionBtn, { backgroundColor: a.bg, marginLeft: 6 }]}
+              onPress={a.onPress}
+              activeOpacity={0.7}
+            >
+              <Icon lib={a.iconLib} name={a.iconName} size={13} color={a.color} />
             </TouchableOpacity>
           ))}
         </View>
@@ -342,46 +328,62 @@ const ScheduleCard = ({ event, navigateTo }) => {
 };
 
 const CaseCard = ({ item, onViewDetails }) => (
-  <View style={styles.card}>
-    <View style={styles.caseMeta}>
-      <View style={styles.row}>
-        <View style={styles.caseIdBadge}><Text style={styles.caseIdText}>{item.id}</Text></View>
-        <View style={[styles.tag, { backgroundColor: item.badgeBg, marginLeft: 6 }]}>
-          <Text style={[styles.tagText, { color: item.badgeColor }]}>{item.badge}</Text>
+  <TouchableOpacity
+    style={cc.card}
+    onPress={() => onViewDetails && onViewDetails(item)}
+    activeOpacity={0.82}
+  >
+    {/* Bande colorée à gauche */}
+    <View style={[cc.accent, { backgroundColor: item.badgeColor }]} />
+
+    <View style={cc.content}>
+      {/* ── Ligne 1 : badge priorité ── */}
+      <View style={cc.topRow}>
+        <View style={[cc.priorityBadge, { backgroundColor: item.badgeBg }]}>
+          <View style={[cc.priorityDot, { backgroundColor: item.badgeColor }]} />
+          <Text style={[cc.priorityText, { color: item.badgeColor }]}>{item.badge}</Text>
         </View>
       </View>
-    </View>
-    <Text style={[styles.cardTitle, { marginTop: 6 }]}>{item.title}</Text>
-    <Text style={[styles.cardSubtitle, { marginBottom: 10 }]}>{item.subtitle}</Text>
-    <View style={[styles.row, styles.caseClient]}>
-      <Image source={{ uri: item.client?.avatar }} style={styles.avatarMd} />
-      <View style={{ marginLeft: 8 }}>
-        <Text style={styles.clientNameBold}>{item.client?.name}</Text>
-        <Text style={styles.clientRole}>Client</Text>
+
+      {/* ── Ligne 2 : titre ── */}
+      <Text style={cc.title} numberOfLines={2}>{item.title}</Text>
+
+      {/* ── Ligne 3 : avatar + client + type ── */}
+      <View style={cc.metaRow}>
+        {item.client?.avatar ? (
+          <Image source={{ uri: item.client.avatar }} style={cc.avatar} />
+        ) : (
+          <View style={[cc.avatar, cc.avatarFallback]}>
+            <FontAwesome5 name="user" size={9} color={COLORS.primary} />
+          </View>
+        )}
+        <Text style={cc.clientName} numberOfLines={1}>
+          {item.client?.name || 'No client'}
+        </Text>
+        {item.type ? (
+          <>
+            <View style={cc.dot} />
+            <Text style={cc.typeText} numberOfLines={1}>{item.type}</Text>
+          </>
+        ) : null}
+      </View>
+
+      {/* ── Ligne 4 : statut + date + flèche ── */}
+      <View style={cc.footer}>
+        <View style={[cc.statusChip, { backgroundColor: COLORS.blue50 }]}>
+          <Text style={[cc.statusText, { color: COLORS.primary }]}>{item.col1Val}</Text>
+        </View>
+        <Text style={cc.updatedText}>Updated {item.col3Val}</Text>
+        <FontAwesome5 name="chevron-right" size={11} color={COLORS.gray400} style={{ marginLeft: 'auto' }} />
       </View>
     </View>
-    <View style={styles.caseStats}>
-      <View style={styles.caseStat}><Text style={styles.caseStatLabel}>{item.col1Label}</Text><Text style={styles.caseStatVal}>{item.col1Val}</Text></View>
-      <View style={[styles.caseStat, styles.caseStatBordered]}><Text style={styles.caseStatLabel}>{item.col2Label}</Text><Text style={styles.caseStatVal}>{item.col2Val}</Text></View>
-      <View style={styles.caseStat}><Text style={styles.caseStatLabel}>{item.col3Label}</Text><Text style={styles.caseStatVal}>{item.col3Val}</Text></View>
-    </View>
-    <View style={styles.row}>
-      <TouchableOpacity style={styles.btnPrimary} onPress={() => onViewDetails && onViewDetails(item)}>
-        <Text style={styles.btnPrimaryText}>View Details</Text>
-      </TouchableOpacity>
-      {(item.actions || []).map((a, i) => (
-        <TouchableOpacity key={i} style={[styles.iconBtn, { backgroundColor: a.bg, marginLeft: 8 }]}>
-          <Icon lib={a.iconLib} name={a.iconName} size={16} color={a.color} />
-        </TouchableOpacity>
-      ))}
-    </View>
-  </View>
+  </TouchableOpacity>
 );
 
-const TaskCard = ({ item }) => (
+const TaskCard = ({ item, onDone }) => (
   <View style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.borderColor }]}>
     <View style={styles.row}>
-      <TouchableOpacity style={styles.checkbox} />
+      <TouchableOpacity style={styles.checkbox} onPress={() => onDone && onDone(item.id)} />
       <View style={{ flex: 1 }}>
         <View style={[styles.row, { marginBottom: 4, flexWrap: 'wrap', gap: 6 }]}>
           <Text style={[styles.cardTitle, { flex: 1 }]}>{item.title}</Text>
@@ -399,141 +401,317 @@ const TaskCard = ({ item }) => (
               <Text style={[styles.gray500Sm, { color: item.timeColor, fontWeight: '600', marginLeft: 4 }]}>{item.timeLeft}</Text>
             </View>
           )}
-          {item.action && (
+        </View>
+      </View>
+    </View>
+  </View>
+);
+
+const DocumentCard = ({ item }) => {
+  if (!item.action) return null;
+  return (
+    <View style={styles.card}>
+      <View style={styles.row}>
+        <View style={[styles.docIcon, { backgroundColor: item.iconBg }]}>
+          <Icon lib={item.iconLib} name={item.iconName} size={22} color={item.iconColor} />
+        </View>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={[styles.cardTitle, { marginBottom: 2 }]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[styles.cardSubtitle, { marginBottom: 8 }]}>{item.case}</Text>
+          <View style={styles.row}>
+            {item.size ? <Text style={styles.gray500Sm}>{item.size}</Text> : null}
+            {item.size && item.date ? <Text style={[styles.gray500Sm, { marginHorizontal: 6 }]}>•</Text> : null}
+            {item.date ? <Text style={styles.gray500Sm}>{item.date}</Text> : null}
             <TouchableOpacity style={[styles.tagBtn, { backgroundColor: item.action.bg, marginLeft: 'auto' }]}>
               <View style={styles.row}>
                 <Icon lib={item.action.iconLib} name={item.action.iconName} size={11} color={item.action.color} />
                 <Text style={[styles.tagText, { color: item.action.color, marginLeft: 4 }]}>{item.action.label}</Text>
               </View>
             </TouchableOpacity>
-          )}
+          </View>
         </View>
       </View>
     </View>
-  </View>
-);
-
-const DocumentCard = ({ item }) => (
-  <View style={styles.card}>
-    <View style={styles.row}>
-      <View style={[styles.docIcon, { backgroundColor: item.iconBg }]}>
-        <Icon lib={item.iconLib} name={item.iconName} size={22} color={item.iconColor} />
-      </View>
-      <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={[styles.cardTitle, { marginBottom: 2 }]} numberOfLines={1}>{item.name}</Text>
-        <Text style={[styles.cardSubtitle, { marginBottom: 8 }]}>{item.case}</Text>
-        <View style={styles.row}>
-          <Text style={styles.gray500Sm}>{item.size}</Text>
-          <Text style={[styles.gray500Sm, { marginHorizontal: 6 }]}>•</Text>
-          <Text style={styles.gray500Sm}>{item.date}</Text>
-          <TouchableOpacity style={[styles.tagBtn, { backgroundColor: item.action.bg, marginLeft: 'auto' }]}>
-            <View style={styles.row}>
-              <Icon lib={item.action.iconLib} name={item.action.iconName} size={11} color={item.action.color} />
-              <Text style={[styles.tagText, { color: item.action.color, marginLeft: 4 }]}>{item.action.label}</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  </View>
-);
+  );
+};
 
 // ─── ÉCRAN PRINCIPAL ─────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const { user } = useAuth();
-  const { theme: T } = useAppPrefs();
   const [currentScreen, setCurrentScreen] = useState(null);
-  const [selectedCase, setSelectedCase]   = useState(null);
+  const [selectedCase,  setSelectedCase]  = useState(null);
 
-  // ── Dashboard data ───────────────────────────────────────────────────────
-  const [stats,       setStats]       = useState(null);
-  const [todayEvents, setTodayEvents] = useState([]);
-  const [recentCases, setRecentCases] = useState([]);
-  const [loadingData, setLoadingData] = useState(true);
+  // ── État API ─────────────────────────────────────────────────────────────
+  const [stats,        setStats]        = useState(null);
+  const [todayEvents,  setTodayEvents]  = useState([]);
+  const [recentCases,  setRecentCases]  = useState([]);
+  const [pendingTasks, setPendingTasks] = useState([]);
+  const [recentDocs,   setRecentDocs]   = useState([]);
+  const [clientCount,  setClientCount]  = useState(null);
+  const [notifCount,   setNotifCount]   = useState(0);
+  const [loadingData,  setLoadingData]  = useState(true);
+  const [refreshing,   setRefreshing]   = useState(false);
+  const [error,        setError]        = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [s, t, r] = await Promise.all([
-          dashboardAPI.stats(),
-          dashboardAPI.today(),
-          dashboardAPI.recentCases(),
-        ]);
-        setStats(s);
-        setTodayEvents(t || []);
-        setRecentCases(r || []);
-      } catch (err) {
-        // Silently fallback to static data on network error (dev mode)
-        console.warn('Dashboard load error:', err.message);
-      } finally {
-        setLoadingData(false);
-      }
-    })();
+  // ── Chargement dashboard ─────────────────────────────────────────────────
+  const loadDashboard = useCallback(async () => {
+    setError(null);
+    const [sRes, tRes, rRes, nRes, taskRes, docRes, cliRes] = await Promise.allSettled([
+      dashboardAPI.stats(),
+      dashboardAPI.today(),
+      dashboardAPI.recentCases(),
+      notificationsAPI.list(),
+      tasksAPI.list(),
+      documentsAPI.list(),
+      clientsAPI.list(),
+    ]);
+
+    if (sRes.status === 'fulfilled') {
+      setStats(sRes.value);
+    } else {
+      console.warn('Stats failed:', sRes.reason?.message);
+      setError('Could not load dashboard stats');
+    }
+
+    if (tRes.status === 'fulfilled') setTodayEvents(tRes.value || []);
+    if (rRes.status === 'fulfilled') setRecentCases(rRes.value || []);
+
+    if (nRes.status === 'fulfilled') {
+      const unread = (nRes.value || []).filter(n => !n.is_read).length;
+      setNotifCount(unread);
+    }
+
+    if (taskRes.status === 'fulfilled') {
+      const pending = (taskRes.value || []).filter(t => ['PENDING', 'IN_PROGRESS'].includes(t.status));
+      setPendingTasks(pending.slice(0, 5));
+    }
+
+    if (docRes.status === 'fulfilled') {
+      setRecentDocs((docRes.value || []).slice(0, 5));
+    }
+
+    if (cliRes.status === 'fulfilled') {
+      setClientCount((cliRes.value || []).length);
+    }
   }, []);
 
-  // ── Derive stats cards from API response (or keep static fallback) ────────
-  const STATS_LIVE = stats ? [
-    { iconLib: 'FA5', iconName: 'briefcase', iconColor: COLORS.primary,   count: String(stats.active_cases ?? 0),     label: 'Active Cases',  badge: '+3',    badgeColor: COLORS.green600,  badgeBg: COLORS.green50,  iconBg: COLORS.blue100   },
-    { iconLib: 'FA5', iconName: 'gavel',     iconColor: COLORS.purple600, count: String(stats.upcoming_hearings ?? 0), label: 'Hearings',      badge: 'Today', badgeColor: COLORS.orange600, badgeBg: COLORS.orange50, iconBg: COLORS.purple100 },
-    { iconLib: 'FA5', iconName: 'tasks',     iconColor: COLORS.amber600,  count: String(stats.active_reminders ?? 0),  label: 'Pending Tasks', badge: 'Urgent',badgeColor: COLORS.red600,    badgeBg: COLORS.red50,    iconBg: COLORS.amber100  },
-    { iconLib: 'FA5', iconName: 'file-alt',  iconColor: COLORS.green600,  count: String(stats.closed_cases ?? 0),      label: 'Closed Cases',  badge: 'New',   badgeColor: COLORS.blue600,   badgeBg: COLORS.blue50,   iconBg: COLORS.green100  },
-  ] : STATS;
+  useEffect(() => {
+    loadDashboard().finally(() => setLoadingData(false));
+  }, [loadDashboard]);
 
-  // ── Convert today's API events to ScheduleCard format ────────────────────
-  const scheduleEvents = todayEvents.length > 0
-    ? todayEvents.map((ev) => {
-        const dt = new Date(ev.start_datetime);
-        const h  = dt.getHours(), m = dt.getMinutes();
-        return {
-          id:       ev.id,
-          type:     ev.event_type?.toLowerCase() || 'meeting',
-          time:     `${h % 12 || 12}:${String(m).padStart(2, '0')}`,
-          period:   h >= 12 ? 'PM' : 'AM',
-          title:    ev.title,
-          subtitle: ev.location || '',
-          priority: 'normal',
-          case_id:  ev.case_id,
-          location: ev.location,
-          tag:      ev.event_type,
-          client:   null,
-        };
-      })
-    : SCHEDULE;
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadDashboard();
+    setRefreshing(false);
+  }, [loadDashboard]);
 
-  // ── Convert recent cases from API ────────────────────────────────────────
-  const casesDisplay = recentCases.length > 0
-    ? recentCases.map((c) => ({
-        id:          c.id,
-        badge:       c.priority || 'Normal',
-        badgeColor:  c.priority === 'URGENT' ? COLORS.red600 : COLORS.amber600,
-        badgeBg:     c.priority === 'URGENT' ? COLORS.red50  : COLORS.amber50,
-        col1Label:   'Status',     col1Val: c.status,
-        col2Label:   'Type',       col2Val: c.case_type,
-        col3Label:   'Filed',      col3Val: c.filing_date ? c.filing_date.slice(0, 10) : '—',
-        actions: [
-          { iconLib: 'FA5', iconName: 'robot',    bg: COLORS.blue50,  color: COLORS.primary  },
-          { iconLib: 'FA5', iconName: 'eye',      bg: COLORS.gray100, color: COLORS.gray600  },
-        ],
-        title:       c.title,
-        subtitle:    c.case_type,
-        type:        c.case_type,
-        phase:       c.status,
-        priority:    c.priority?.toLowerCase() || 'normal',
-        status:      c.status,
-        filingDate:  c.filing_date,
-        court:       c.court_name || '',
-        judge:       c.judge_name || '',
-        prosecutor:  c.opposing_party || '',
-        attorney:    '',
-        caseValue:   c.estimated_value ? `$${c.estimated_value}` : '',
-        description: c.description || '',
-        tags:        [c.case_type],
+  // ── Ouvrir les détails complets d'un dossier ─────────────────────────────
+  const handleCasePress = useCallback(async (partialCase) => {
+    try {
+      const full = await casesAPI.getById(partialCase._id);
+      const cl   = full.client;
+      setSelectedCase({
+        _id:         full.id,
+        id:          full.case_number,
+        title:       full.title,
+        type:        full.case_type || '',
+        phase:       full.status || '',
+        priority:    (full.priority || 'NORMAL').toLowerCase(),
+        status:      full.status || '',
+        filingDate:  full.filing_date || '',
+        court:       full.court_name || '',
+        judge:       full.judge_name || '',
+        prosecutor:  full.opposing_party || '',
+        attorney:    full.attorney_name || '',
+        caseValue:   full.estimated_value ? `$${full.estimated_value}` : '',
+        description: full.description || '',
+        tags:        full.case_type ? [full.case_type] : [],
         nextHearing: null,
         stats:       { docs: 0, tasks: 0, events: 0, notes: 0 },
         timeTracking:{ billable: 0, nonBillable: 0 },
-        client:      c.client_name ? { name: c.client_name, id: c.client_id, avatar: null, since: '', phone: '', email: '', address: '', status: 'Active', tier: '' } : null,
-      }))
-    : CASES;
+        client:      cl ? {
+          name:    `${cl.first_name || ''} ${cl.last_name || ''}`.trim(),
+          id:      cl.id || '',
+          avatar:  null,
+          since:   '',
+          phone:   cl.phone || '',
+          email:   cl.email || '',
+          address: '',
+          status:  'Active',
+          tier:    '',
+        } : null,
+      });
+    } catch (e) {
+      Alert.alert('Error', 'Could not load case details. Please try again.');
+    }
+  }, []);
+
+  // ── Marquer une tâche comme terminée ─────────────────────────────────────
+  const handleTaskDone = useCallback(async (taskId) => {
+    try {
+      await tasksAPI.updateStatus(taskId, 'DONE');
+      setPendingTasks(prev => prev.filter(t => t.id !== taskId));
+    } catch {
+      Alert.alert('Error', 'Could not update task status. Please try again.');
+    }
+  }, []);
+
+  // ── Cartes de statistiques ────────────────────────────────────────────────
+  const STATS_LIVE = stats ? [
+    {
+      iconLib: 'FA5', iconName: 'briefcase', iconColor: COLORS.primary, iconBg: COLORS.blue100,
+      count: String(stats.active_cases ?? 0), label: 'Active Cases',
+      badge: stats.active_cases > 0 ? `${stats.active_cases} open` : 'None',
+      badgeColor: stats.active_cases > 0 ? COLORS.green600 : COLORS.gray500,
+      badgeBg:    stats.active_cases > 0 ? COLORS.green50  : COLORS.gray100,
+    },
+    {
+      iconLib: 'FA5', iconName: 'gavel', iconColor: COLORS.purple600, iconBg: COLORS.purple100,
+      count: String(stats.upcoming_hearings ?? 0), label: 'Hearings',
+      badge: stats.upcoming_hearings > 0 ? 'Upcoming' : 'None',
+      badgeColor: stats.upcoming_hearings > 0 ? COLORS.orange600 : COLORS.gray500,
+      badgeBg:    stats.upcoming_hearings > 0 ? COLORS.orange50  : COLORS.gray100,
+    },
+    {
+      iconLib: 'FA5', iconName: 'tasks', iconColor: COLORS.amber600, iconBg: COLORS.amber100,
+      count: String(stats.active_reminders ?? 0), label: 'Pending Tasks',
+      badge: stats.active_reminders > 0 ? 'Overdue' : 'Clear',
+      badgeColor: stats.active_reminders > 0 ? COLORS.red600   : COLORS.green600,
+      badgeBg:    stats.active_reminders > 0 ? COLORS.red50    : COLORS.green50,
+    },
+    {
+      iconLib: 'FA5', iconName: 'check-circle', iconColor: COLORS.green600, iconBg: COLORS.green100,
+      count: String(stats.closed_cases ?? 0), label: 'Closed Cases',
+      badge: 'Done',
+      badgeColor: COLORS.blue600, badgeBg: COLORS.blue50,
+    },
+  ] : STATS_FALLBACK;
+
+  // ── Quick actions avec données réelles ────────────────────────────────────
+  const MANAGEMENT_ACTIONS_LIVE = [
+    {
+      screen: 'ClientsManagement', icon: 'users', iconLib: 'FA5',
+      label: 'Clients', sublabel: 'Management',
+      color: COLORS.purple600, bg: COLORS.purple50, accent: COLORS.purple100,
+      badge: clientCount !== null ? String(clientCount) : '—',
+      badgeLabel: 'Total', badgeColor: COLORS.purple600, badgeBg: COLORS.purple100,
+    },
+    {
+      screen: 'TasksNotesManagement', icon: 'tasks', iconLib: 'FA5',
+      label: 'Tasks & Notes', sublabel: 'Management',
+      color: COLORS.amber600, bg: COLORS.amber50, accent: COLORS.amber100,
+      badge: stats ? String(stats.active_reminders ?? 0) : '—',
+      badgeLabel: 'Pending', badgeColor: COLORS.amber600, badgeBg: COLORS.amber100,
+    },
+    {
+      screen: 'InvoicesManagement', icon: 'file-invoice-dollar', iconLib: 'FA5',
+      label: 'Invoices', sublabel: '& Payments',
+      color: COLORS.teal600, bg: '#F0FDFA', accent: '#CCFBF1',
+      badge: stats ? `$${stats.pending_payments ?? 0}` : '—',
+      badgeLabel: 'Pending', badgeColor: COLORS.red600, badgeBg: COLORS.red50,
+    },
+    {
+      screen: 'AIAssistant', icon: 'robot', iconLib: 'FA5',
+      label: 'AI Assistant', sublabel: 'Legal AI',
+      color: COLORS.indigo600, bg: '#EEF2FF', accent: '#C7D2FE',
+      badge: 'Online', badgeLabel: '', badgeColor: COLORS.green600, badgeBg: COLORS.green50,
+    },
+  ];
+
+  // ── Conversion événements du jour ─────────────────────────────────────────
+  const scheduleEvents = todayEvents.map((ev) => {
+    const dt = parseDate(ev.start_datetime);
+    const h = localH(dt), m = localM(dt);
+    return {
+      id:           ev.id,
+      type:         ev.event_type?.toLowerCase() || 'meeting',
+      time:         `${h % 12 || 12}:${String(m).padStart(2, '0')}`,
+      period:       h >= 12 ? 'PM' : 'AM',
+      title:        ev.title,
+      subtitle:     ev.location || ev.case_file?.title || '',
+      priority:     'normal',
+      case_id:      ev.case_id,
+      location:     ev.location,
+      meeting_link: ev.meeting_link,
+      tag:          ev.event_type?.replace(/_/g, ' '),
+      client:       null,
+    };
+  });
+
+  // ── Conversion dossiers récents ───────────────────────────────────────────
+  const CASE_PRIORITY = {
+    URGENT: { color: COLORS.red600,   bg: COLORS.red50   },
+    HIGH:   { color: COLORS.amber600, bg: COLORS.amber50 },
+    MEDIUM: { color: COLORS.blue600,  bg: COLORS.blue50  },
+    NORMAL: { color: COLORS.green600, bg: COLORS.green50 },
+  };
+
+  const casesDisplay = recentCases.map((c) => {
+    const priority = c.priority || 'NORMAL';
+    const pc = CASE_PRIORITY[priority] || CASE_PRIORITY.NORMAL;
+    return {
+      _id:         c.id,
+      id:          c.case_number || null,
+      badge:       priority.charAt(0) + priority.slice(1).toLowerCase(),
+      badgeColor:  pc.color,
+      badgeBg:     pc.bg,
+      col1Label:   'Status',  col1Val: c.status ? c.status.charAt(0) + c.status.slice(1).toLowerCase() : '—',
+      col2Label:   'Type',    col2Val: c.case_type || '—',
+      col3Label:   'Updated', col3Val: formatRelativeDate(c.updated_at),
+      actions: [
+        { iconLib: 'FA5', iconName: 'robot', bg: COLORS.blue50,  color: COLORS.primary },
+        { iconLib: 'FA5', iconName: 'eye',   bg: COLORS.gray100, color: COLORS.gray600 },
+      ],
+      title:       c.title,
+      subtitle:    c.case_type || '',
+      type:        c.case_type || '',
+      phase:       c.status || '',
+      priority:    priority.toLowerCase(),
+      status:      c.status || '',
+      filingDate:  c.filing_date || '',
+      court:       c.court_name || '',
+      judge:       c.judge_name || '',
+      prosecutor:  c.opposing_party || '',
+      attorney:    '',
+      caseValue:   c.estimated_value ? `$${c.estimated_value}` : '',
+      description: c.description || '',
+      tags:        c.case_type ? [c.case_type] : [],
+      nextHearing: null,
+      stats:       { docs: 0, tasks: 0, events: 0, notes: 0 },
+      timeTracking:{ billable: 0, nonBillable: 0 },
+      client: c.client_name
+        ? { name: c.client_name, id: c.client_id || '', avatar: null, since: '', phone: '', email: '', address: '', status: 'Active', tier: '' }
+        : null,
+    };
+  });
+
+  // ── Conversion tâches ─────────────────────────────────────────────────────
+  const tasksDisplay = pendingTasks.map((task) => {
+    const dueBadge = getDueBadge(task.due_date, task.priority);
+    return {
+      id:       task.id,
+      title:    task.title,
+      ...dueBadge,
+      subtitle: task.case_number || task.description || '',
+      caseId:   task.case_number || task.case_id || '—',
+      timeLeft: task.due_date ? formatRelativeDate(task.due_date) : null,
+    };
+  });
+
+  // ── Conversion documents ──────────────────────────────────────────────────
+  const docsDisplay = recentDocs.map((doc) => {
+    const { iconName, iconColor, iconBg } = getDocIconStyle(doc.file_type);
+    return {
+      id:      doc.id,
+      iconLib: 'FA5',
+      iconName, iconColor, iconBg,
+      name:    doc.file_name,
+      case:    doc.case_file?.title || doc.case_file?.case_number || '',
+      size:    doc.file_size_mb ? `${Number(doc.file_size_mb).toFixed(1)} MB` : '',
+      date:    formatRelativeDate(doc.created_at),
+      action:  { iconLib: 'FA5', iconName: 'eye', label: 'View', color: COLORS.purple600, bg: COLORS.purple50 },
+    };
+  });
 
   const navigateTo = (screen) => setCurrentScreen(screen);
   const goBack = () => setCurrentScreen(null);
@@ -542,14 +720,19 @@ export default function HomeScreen() {
   const firstName = user?.full_name?.split(' ')[0] || 'there';
   const firmName  = user?.firm_name || 'Your Firm';
 
+  // ── Chargement initial ────────────────────────────────────────────────────
   if (loadingData) {
     return (
-      <SafeAreaView style={[styles.safe, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.white} />
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Loading dashboard…</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
+  // ── Sous-écrans ───────────────────────────────────────────────────────────
   if (selectedCase) {
     return (
       <CaseDetailsScreen
@@ -577,14 +760,22 @@ export default function HomeScreen() {
   if (currentScreen === 'AllTasks')             return <AllTasksScreen {...screenProps} />;
   if (currentScreen === 'AllDocuments')         return <AllDocumentsScreen {...screenProps} />;
 
+  // ── Rendu principal ───────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: T.bg }]}>
+    <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
+      {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.row}>
-            <Image source={{ uri: user?.avatar_url || 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg' }} style={styles.avatar} />
+            {user?.avatar_url ? (
+              <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                <FontAwesome5 name="user" size={20} color={COLORS.white} />
+              </View>
+            )}
             <View style={{ marginLeft: 12 }}>
               <Text style={styles.welcomeText}>Welcome back, {firstName}</Text>
               <Text style={styles.firmText}>{firmName}</Text>
@@ -592,59 +783,118 @@ export default function HomeScreen() {
           </View>
           <TouchableOpacity style={{ position: 'relative' }} onPress={() => navigateTo('Notifications')}>
             <Icon lib="ION" name="notifications-outline" size={26} color={COLORS.white} />
-            <View style={styles.notifBadge}><Text style={styles.notifBadgeText}>7</Text></View>
+            {notifCount > 0 && (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>{notifCount > 99 ? '99+' : notifCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
         <View style={styles.searchWrap}>
           <Icon lib="FA" name="search" size={18} color="rgba(255,255,255,0.7)" />
-          <TextInput style={styles.searchInput} placeholder="Search cases, clients, documents..." placeholderTextColor="rgba(255,255,255,0.6)" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search cases, clients, documents…"
+            placeholderTextColor="rgba(255,255,255,0.6)"
+          />
         </View>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
+      {/* ── Bandeau d'erreur ── */}
+      {error && (
+        <View style={styles.errorBanner}>
+          <Icon lib="FA5" name="exclamation-triangle" size={13} color={COLORS.red600} />
+          <Text style={styles.errorBannerText}>{error}</Text>
+          <TouchableOpacity onPress={handleRefresh}>
+            <Text style={styles.errorBannerRetry}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ paddingBottom: 90 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[COLORS.primary]}
+            tintColor={COLORS.primary}
+          />
+        }
+      >
+        {/* ── Stats ── */}
         <View style={styles.section}>
           <View style={styles.statsGrid}>
             {STATS_LIVE.map((s, i) => <StatCard key={i} item={s} />)}
           </View>
         </View>
 
+        {/* ── Quick Actions ── */}
         <View style={styles.section}>
           <SectionHeader title="Quick Actions" />
           <Text style={styles.managementSubtitle}>Tap a module to open its full management screen</Text>
           <View style={styles.mgmtGrid}>
-            {MANAGEMENT_ACTIONS.map((item, i) => <ManagementCard key={i} item={item} onPress={navigateTo} />)}
+            {MANAGEMENT_ACTIONS_LIVE.map((item, i) => (
+              <ManagementCard key={i} item={item} onPress={navigateTo} />
+            ))}
           </View>
         </View>
 
+        {/* ── Today's Schedule ── */}
         <View style={[styles.section, { backgroundColor: COLORS.blue50 }]}>
           <SectionHeader title="Today's Schedule" action="View All ›" onAction={() => navigateTo('AllSchedule')} />
-          {scheduleEvents.map((event) => (
-            <ScheduleCard key={event.id} event={event} navigateTo={navigateTo} />
-          ))}
+          {scheduleEvents.length > 0 ? (
+            scheduleEvents.map((event) => (
+              <ScheduleCard key={event.id} event={event} navigateTo={navigateTo} />
+            ))
+          ) : (
+            <EmptyState lib="ION" icon="calendar-outline" text="No events scheduled for today" />
+          )}
         </View>
 
+        {/* ── Active Cases ── */}
         <View style={styles.section}>
           <SectionHeader title="Active Cases" action="See All ›" onAction={() => navigateTo('AllCases')} />
-          {casesDisplay.map((c, i) => (
-            <CaseCard key={i} item={c} onViewDetails={(caseItem) => setSelectedCase(caseItem)} />
-          ))}
+          {casesDisplay.length > 0 ? (
+            casesDisplay.map((c, i) => (
+              <CaseCard key={i} item={c} onViewDetails={handleCasePress} />
+            ))
+          ) : (
+            <EmptyState icon="briefcase" text="No active cases" />
+          )}
         </View>
 
+        {/* ── Pending Tasks ── */}
         <View style={[styles.section, { backgroundColor: COLORS.amber50 }]}>
           <SectionHeader title="Pending Tasks" action="View All ›" onAction={() => navigateTo('AllTasks')} />
-          {TASKS.map((t, i) => <TaskCard key={i} item={t} />)}
+          {tasksDisplay.length > 0 ? (
+            tasksDisplay.map((t) => (
+              <TaskCard key={t.id} item={t} onDone={handleTaskDone} />
+            ))
+          ) : (
+            <EmptyState icon="check-circle" text="No pending tasks — all clear!" />
+          )}
           <TouchableOpacity style={styles.addTaskBtn} onPress={() => navigateTo('AddTask')}>
             <Icon lib="FA5" name="plus" size={14} color={COLORS.amber600} />
             <Text style={styles.addTaskBtnText}>Add New Task</Text>
           </TouchableOpacity>
         </View>
 
+        {/* ── Recent Documents ── */}
         <View style={styles.section}>
           <SectionHeader title="Recent Documents" action="View All ›" onAction={() => navigateTo('AllDocuments')} />
-          {DOCUMENTS.map((d, i) => <DocumentCard key={i} item={d} />)}
+          {docsDisplay.length > 0 ? (
+            docsDisplay.map((d) => (
+              <DocumentCard key={d.id} item={d} />
+            ))
+          ) : (
+            <EmptyState icon="file-alt" text="No documents uploaded yet" />
+          )}
         </View>
 
+        {/* ── AI Card ── */}
         <View style={[styles.section, { backgroundColor: '#EEF2FF' }]}>
           <TouchableOpacity style={styles.aiCard} onPress={() => navigateTo('AIAssistant')}>
             <View style={styles.row}>
@@ -659,83 +909,114 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ─── STYLES ──────────────────────────────────────────────────────────────────
+// ─── STYLES : SCHEDULE CARD ──────────────────────────────────────────────────
+const ev = StyleSheet.create({
+  card:          { backgroundColor: COLORS.white, borderRadius: 18, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: COLORS.gray100 },
+  header:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
+  headerLeft:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconCircle:    { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  timeText:      { fontSize: 15, fontWeight: '800' },
+  timePeriod:    { fontSize: 12, fontWeight: '500' },
+  typePill:      { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, borderWidth: 1, maxWidth: 130 },
+  typePillText:  { fontSize: 11, fontWeight: '700' },
+  body:          { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },
+  title:         { fontSize: 15, fontWeight: '800', color: COLORS.dark },
+  subText:       { fontSize: 12, color: COLORS.gray500, flex: 1 },
+  footer:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: COLORS.gray100, marginTop: 8 },
+  clientChip:    { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.gray50, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, gap: 4, maxWidth: '60%' },
+  clientChipText:{ fontSize: 11, color: COLORS.gray500, fontWeight: '500' },
+  actionBtn:     { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+});
+
+// ─── STYLES : CASE CARD ───────────────────────────────────────────────────────
+const cc = StyleSheet.create({
+  card:          { flexDirection: 'row', backgroundColor: COLORS.white, borderRadius: 18, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: COLORS.gray100 },
+  accent:        { width: 5, borderTopLeftRadius: 18, borderBottomLeftRadius: 18 },
+  content:       { flex: 1, padding: 14 },
+  topRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  caseNum:       { fontSize: 11, fontWeight: '700', color: COLORS.primary, backgroundColor: COLORS.blue50, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  priorityBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  priorityDot:   { width: 6, height: 6, borderRadius: 3 },
+  priorityText:  { fontSize: 11, fontWeight: '700' },
+  title:         { fontSize: 15, fontWeight: '800', color: COLORS.dark, lineHeight: 20, marginBottom: 8 },
+  metaRow:       { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  avatar:        { width: 22, height: 22, borderRadius: 11 },
+  avatarFallback:{ backgroundColor: COLORS.blue100, alignItems: 'center', justifyContent: 'center' },
+  clientName:    { fontSize: 12, color: COLORS.gray600, fontWeight: '600', flex: 1 },
+  dot:           { width: 3, height: 3, borderRadius: 2, backgroundColor: COLORS.gray300 },
+  typeText:      { fontSize: 11, color: COLORS.gray400, flexShrink: 1 },
+  footer:        { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.gray100 },
+  statusChip:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statusText:    { fontSize: 11, fontWeight: '700' },
+  updatedText:   { fontSize: 11, color: COLORS.gray400 },
+});
+
+// ─── STYLES PRINCIPAUX ────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.primary },
-  scroll: { flex: 1, backgroundColor: COLORS.gray50 },
-  header: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: COLORS.white },
-  welcomeText: { fontSize: 16, fontWeight: '700', color: COLORS.white },
-  firmText: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
-  notifBadge: { position: 'absolute', top: -3, right: -3, backgroundColor: COLORS.red500, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  notifBadgeText: { color: COLORS.white, fontSize: 10, fontWeight: '700' },
-  searchWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, gap: 10 },
-  searchInput: { flex: 1, color: COLORS.white, fontSize: 14 },
-  section: { paddingHorizontal: 20, paddingVertical: 20, backgroundColor: COLORS.white, marginBottom: 2 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: COLORS.dark },
-  sectionAction: { fontSize: 14, fontWeight: '600', color: COLORS.primary },
+  safe:               { flex: 1, backgroundColor: COLORS.primary },
+  loadingContainer:   { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.gray50 },
+  loadingText:        { marginTop: 12, color: COLORS.gray500, fontSize: 13 },
+  scroll:             { flex: 1, backgroundColor: COLORS.gray50 },
+  header:             { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
+  headerTop:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  avatar:             { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: COLORS.white },
+  avatarPlaceholder:  { backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
+  welcomeText:        { fontSize: 16, fontWeight: '700', color: COLORS.white },
+  firmText:           { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
+  notifBadge:         { position: 'absolute', top: -3, right: -3, backgroundColor: COLORS.red500, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  notifBadgeText:     { color: COLORS.white, fontSize: 10, fontWeight: '700' },
+  searchWrap:         { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, gap: 10 },
+  searchInput:        { flex: 1, color: COLORS.white, fontSize: 14 },
+  errorBanner:        { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.red50, paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.red100 },
+  errorBannerText:    { flex: 1, fontSize: 12, color: COLORS.red600 },
+  errorBannerRetry:   { fontSize: 12, fontWeight: '700', color: COLORS.primary },
+  section:            { paddingHorizontal: 20, paddingVertical: 20, backgroundColor: COLORS.white, marginBottom: 2 },
+  sectionHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  sectionTitle:       { fontSize: 17, fontWeight: '700', color: COLORS.dark },
+  sectionAction:      { fontSize: 14, fontWeight: '600', color: COLORS.primary },
   managementSubtitle: { fontSize: 12, color: COLORS.gray500, marginBottom: 16 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  statCard: { width: '47%', backgroundColor: COLORS.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: COLORS.gray100 },
-  statTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  statIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  statBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  statBadgeText: { fontSize: 11, fontWeight: '600' },
-  statCount: { fontSize: 24, fontWeight: '800', color: COLORS.dark, marginBottom: 2 },
-  statLabel: { fontSize: 12, fontWeight: '500', color: COLORS.gray500 },
-  mgmtGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  mgmtCard: { width: (W - 40 - 12) / 2 - 1, borderRadius: 20, padding: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, position: 'relative', overflow: 'hidden' },
-  mgmtIconCircle: { width: 60, height: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  mgmtLabel: { fontSize: 15, fontWeight: '800', lineHeight: 18 },
-  mgmtSublabel: { fontSize: 11, color: COLORS.gray500, marginTop: 2, marginBottom: 10 },
-  mgmtBadge: { alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, marginBottom: 8 },
-  mgmtBadgeText: { fontSize: 11, fontWeight: '700' },
-  mgmtArrow: { position: 'absolute', bottom: 12, right: 12, width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  card: { backgroundColor: COLORS.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, borderWidth: 1, borderColor: COLORS.gray100, marginBottom: 10 },
-  cardTitle: { fontSize: 14, fontWeight: '700', color: COLORS.dark },
-  cardSubtitle: { fontSize: 13, color: COLORS.gray600, marginTop: 2 },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  tag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  tagText: { fontSize: 11, fontWeight: '600' },
-  tagBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  iconBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  avatarSm: { width: 24, height: 24, borderRadius: 12, marginRight: 6 },
-  avatarMd: { width: 32, height: 32, borderRadius: 16 },
-  clientName: { fontSize: 12, fontWeight: '500', color: COLORS.gray600 },
-  clientNameBold: { fontSize: 12, fontWeight: '700', color: COLORS.dark },
-  clientRole: { fontSize: 11, color: COLORS.gray500 },
-  gray500Sm: { fontSize: 12, color: COLORS.gray500 },
-  scheduleTop: { flexDirection: 'row', marginBottom: 12 },
-  scheduleTime: { width: 52, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  scheduleTimeText: { fontSize: 12, fontWeight: '700' },
-  schedulePeriod: { fontSize: 11 },
-  scheduleInfo: { flex: 1 },
-  scheduleBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.gray100 },
-  caseMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  caseIdBadge: { backgroundColor: COLORS.blue50, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
-  caseIdText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
-  caseClient: { marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: COLORS.gray100 },
-  caseStats: { flexDirection: 'row', marginBottom: 12 },
-  caseStat: { flex: 1, alignItems: 'center' },
-  caseStatBordered: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: COLORS.gray100 },
-  caseStatLabel: { fontSize: 11, color: COLORS.gray500, marginBottom: 2 },
-  caseStatVal: { fontSize: 13, fontWeight: '700', color: COLORS.dark },
-  btnPrimary: { flex: 1, backgroundColor: COLORS.primary, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
-  btnPrimaryText: { color: COLORS.white, fontWeight: '700', fontSize: 14 },
-  checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: COLORS.gray400, marginRight: 12, marginTop: 2 },
-  docIcon: { width: 50, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  aiCard: { backgroundColor: COLORS.indigo600, borderRadius: 20, padding: 18 },
-  aiIconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  aiTitle: { fontSize: 16, fontWeight: '700', color: COLORS.white },
-  aiSub: { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
-  addTaskBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: COLORS.amber600, marginTop: 4 },
-  addTaskBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.amber600 },
+  emptyState:         { alignItems: 'center', paddingVertical: 28, gap: 10 },
+  emptyStateText:     { fontSize: 13, color: COLORS.gray400, fontWeight: '500' },
+  statsGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  statCard:           { width: '47%', backgroundColor: COLORS.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: COLORS.gray100 },
+  statTop:            { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  statIconWrap:       { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  statBadge:          { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  statBadgeText:      { fontSize: 11, fontWeight: '600' },
+  statCount:          { fontSize: 24, fontWeight: '800', color: COLORS.dark, marginBottom: 2 },
+  statLabel:          { fontSize: 12, fontWeight: '500', color: COLORS.gray500 },
+  mgmtGrid:           { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  mgmtCard:           { width: (W - 40 - 12) / 2 - 1, borderRadius: 20, padding: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2, position: 'relative', overflow: 'hidden' },
+  mgmtIconCircle:     { width: 60, height: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  mgmtLabel:          { fontSize: 15, fontWeight: '800', lineHeight: 18 },
+  mgmtSublabel:       { fontSize: 11, color: COLORS.gray500, marginTop: 2, marginBottom: 10 },
+  mgmtBadge:          { alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, marginBottom: 8 },
+  mgmtBadgeText:      { fontSize: 11, fontWeight: '700' },
+  mgmtArrow:          { position: 'absolute', bottom: 12, right: 12, width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  card:               { backgroundColor: COLORS.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, borderWidth: 1, borderColor: COLORS.gray100, marginBottom: 10 },
+  cardTitle:          { fontSize: 14, fontWeight: '700', color: COLORS.dark },
+  cardSubtitle:       { fontSize: 13, color: COLORS.gray600, marginTop: 2 },
+  row:                { flexDirection: 'row', alignItems: 'center' },
+  tag:                { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  tagText:            { fontSize: 11, fontWeight: '600' },
+  tagBtn:             { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  iconBtn:            { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  avatarSm:           { width: 24, height: 24, borderRadius: 12, marginRight: 6 },
+  clientName:         { fontSize: 12, fontWeight: '500', color: COLORS.gray600 },
+  gray500Sm:          { fontSize: 12, color: COLORS.gray500 },
+  avatarSm:           { width: 24, height: 24, borderRadius: 12, marginRight: 6 },
+  clientName:         { fontSize: 12, fontWeight: '500', color: COLORS.gray600 },
+  checkbox:           { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: COLORS.gray400, marginRight: 12, marginTop: 2 },
+  docIcon:            { width: 50, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  aiCard:             { backgroundColor: COLORS.indigo600, borderRadius: 20, padding: 18 },
+  aiIconWrap:         { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  aiTitle:            { fontSize: 16, fontWeight: '700', color: COLORS.white },
+  aiSub:              { fontSize: 12, color: 'rgba(255,255,255,0.75)' },
+  addTaskBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: COLORS.amber600, marginTop: 4 },
+  addTaskBtnText:     { fontSize: 13, fontWeight: '700', color: COLORS.amber600 },
 });

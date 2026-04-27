@@ -97,33 +97,40 @@ _EVENT_TYPE_LABELS = {
 }
 
 @router.get("/recent-activity")
-async def get_recent_activity(current_user=Depends(get_lawyer)):
+async def get_recent_activity(
+    current_user=Depends(get_lawyer),
+    days: int = 3,
+):
     """
-    10 most recent activity entries: case timeline events + calendar events,
-    merged and sorted by date.
+    Activity entries for the last `days` days (default 3, use 7 for full-week view).
+    Merges case timeline events + calendar events, sorted by date descending.
     """
-    firm_id = current_user["firm_id"]
+    from datetime import datetime, timezone, timedelta
+
+    firm_id  = current_user["firm_id"]
+    since    = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    limit    = 200 if days > 3 else 10
 
     # ── Case timeline entries ──────────────────────────────────────────────
     timeline = (
         supabase.table("case_timeline")
         .select("*, case_file(id, title, case_number)")
         .eq("firm_id", firm_id)
+        .gte("created_at", since)
         .order("created_at", desc=True)
-        .limit(10)
+        .limit(limit)
         .execute()
     ).data or []
 
     # ── Calendar events WITHOUT a case_id only ────────────────────────────
-    # Events linked to a case already produce a case_timeline entry — skip
-    # them here to avoid duplicates in the feed.
     cal_result = (
         supabase.table("calendar_event")
         .select("id, title, event_type, created_at")
         .eq("firm_id", firm_id)
         .is_("case_id", "null")
+        .gte("created_at", since)
         .order("created_at", desc=True)
-        .limit(10)
+        .limit(limit)
         .execute()
     ).data or []
 
@@ -140,10 +147,10 @@ async def get_recent_activity(current_user=Depends(get_lawyer)):
             "case_file":  None,
         })
 
-    # ── Merge, sort, return top 10 ─────────────────────────────────────────
+    # ── Merge and sort ─────────────────────────────────────────────────────
     all_activity = timeline + formatted_events
     all_activity.sort(key=lambda x: x.get("created_at") or "", reverse=True)
-    return all_activity[:10]
+    return all_activity
 
 
 @router.get("/recent-cases")

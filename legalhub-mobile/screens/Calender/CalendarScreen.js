@@ -30,6 +30,35 @@ const Icon = ({ lib = 'FA5', name, size = 16, color = C.dark }) => {
 };
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────
+
+// ── Timezone ──────────────────────────────────────────────────────────────────
+// We store times exactly as entered by the user (no UTC conversion).
+// Display uses getUTCHours() so the value shown always matches what is in Supabase,
+// regardless of the device system timezone.
+const APP_TZ_OFFSET_H = 0;
+
+// Parse any ISO string (with or without timezone suffix) to a UTC Date.
+// Manually resolves the offset to bypass Hermes date-parsing bugs.
+const parseDate = (iso) => {
+  if (!iso) return new Date(NaN);
+  const s = iso.trim().replace(' ', 'T');
+  const m = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)([+-])(\d{2}):?(\d{2})$/);
+  if (m) {
+    const baseMs = new Date(m[1] + 'Z').getTime();
+    const sign   = m[2] === '+' ? -1 : 1;
+    const offMs  = (parseInt(m[3]) * 60 + parseInt(m[4])) * 60000;
+    return new Date(baseMs + sign * offMs);
+  }
+  if (s.endsWith('Z')) return new Date(s);
+  return new Date(s + 'Z');
+};
+
+// Return local (Africa/Tunis) hour from a UTC Date, regardless of device timezone.
+const localH  = (d) => (d.getUTCHours() + APP_TZ_OFFSET_H) % 24;
+const localM  = (d) => d.getUTCMinutes();
+// Return a Date shifted to Africa/Tunis for getUTCDate/Month/Day/Year calls.
+const localD  = (d) => new Date(d.getTime() + APP_TZ_OFFSET_H * 3600000);
+
 const EVENT_TYPE_META = {
   HEARING:      { icon: 'gavel',       label: 'Hearing',      color: C.red600,    bg: C.red50,    dot: C.red500,    timeBg: C.red100,    border: C.red500    },
   MEETING:      { icon: 'handshake',   label: 'Meeting',      color: C.amber600,  bg: C.amber50,  dot: C.amber500,  timeBg: C.amber100,  border: C.amber500  },
@@ -42,9 +71,9 @@ const getMeta = (type) => EVENT_TYPE_META[(type || '').toUpperCase()] || EVENT_T
 
 const formatTime = (iso) => {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d)) return iso;
-  const h = d.getHours(), m = d.getMinutes();
+  const d = parseDate(iso);
+  if (isNaN(d)) return { time: '—', period: '' };
+  const h = localH(d), m = localM(d);
   const period = h >= 12 ? 'PM' : 'AM';
   const hour = h % 12 || 12;
   return { time: `${String(hour).padStart(2,'0')}:${String(m).padStart(2,'0')}`, period };
@@ -52,8 +81,8 @@ const formatTime = (iso) => {
 
 const toDateKey = (iso) => {
   if (!iso) return '';
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const ld = localD(parseDate(iso));
+  return `${ld.getUTCFullYear()}-${ld.getUTCMonth()}-${ld.getUTCDate()}`;
 };
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -99,7 +128,7 @@ const REMINDER_DEFAULTS    = { push: true, email: true };
 const EventCard = ({ ev, onDelete, showDate = false }) => {
   const meta = getMeta(ev.event_type);
   const tf   = formatTime(ev.start_datetime);
-  const d    = new Date(ev.start_datetime);
+  const d    = localD(parseDate(ev.start_datetime)); // shifted to Africa/Tunis for date display
   return (
     <View style={[s.card, { borderLeftWidth: 4, borderLeftColor: meta.border, padding: 0, marginBottom: 10, overflow: 'hidden' }]}>
       <View style={{ padding: 14 }}>
@@ -111,7 +140,7 @@ const EventCard = ({ ev, onDelete, showDate = false }) => {
           <View style={{ flex: 1 }}>
             {showDate && !isNaN(d) && (
               <Text style={[s.xs, { color: meta.color, fontWeight: '700', marginBottom: 2 }]}>
-                {DAY_NAMES[d.getDay()]} {d.getDate()} {MONTH_NAMES[d.getMonth()]}
+                {DAY_NAMES[d.getUTCDay()]} {d.getUTCDate()} {MONTH_NAMES[d.getUTCMonth()]}
               </Text>
             )}
             <View style={[s.row, { marginBottom: 4 }]}>
@@ -228,19 +257,29 @@ function AddEventModal({ visible, onClose, onCreated }) {
     setUntilDate(new Date()); setShowUntilCal(false);
   };
 
+  // Build a UTC ISO string from the user-entered date/time components using pure
+  // string formatting — avoids Hermes bugs where Date.UTC() applies the local
+  // timezone offset instead of treating the arguments as UTC directly.
+  const buildUtcISO = (calDate, hours, minutes) => {
+    const pad = n => String(n).padStart(2, '0');
+    const y  = calDate.getFullYear();
+    const mo = calDate.getMonth() + 1;   // getMonth() is 0-indexed
+    const d  = calDate.getDate();         // local day — matches what user picked
+    return `${y}-${pad(mo)}-${pad(d)}T${pad(hours)}:${pad(minutes)}:00.000Z`;
+    // e.g. user enters 9h → "2026-04-27T09:00:00.000Z" → Supabase stores 9h
+  };
+
   const handleCreate = async () => {
     if (!title.trim()) { Alert.alert('Required', 'Please enter a title.'); return; }
 
     const sh = parseInt(startH) || 0, sm = parseInt(startM) || 0;
     const eh = parseInt(endH)   || 0, em = parseInt(endM)   || 0;
-    const start = new Date(selDate); start.setHours(sh, sm, 0, 0);
-    const end   = new Date(selDate); end.setHours(eh, em, 0, 0);
 
     const payload = {
       title:          title.trim(),
       event_type:     type,
-      start_datetime: start.toISOString(),
-      end_datetime:   end > start ? end.toISOString() : null,
+      start_datetime: buildUtcISO(selDate, sh, sm),
+      end_datetime:   (eh > sh || (eh === sh && em > sm)) ? buildUtcISO(selDate, eh, em) : null,
       description:    description.trim() || null,
       recurrence,
     };
@@ -252,8 +291,12 @@ function AddEventModal({ visible, onClose, onCreated }) {
         if (count > 104)         { Alert.alert('Validation', 'Maximum 104 occurrences.');                  return; }
         payload.recurrence_count = count;
       } else {
-        const untilIso = untilDate.toISOString().split('T')[0];
-        const startIso = selDate.toISOString().split('T')[0];
+        const toLocalDateStr = (d) => {
+          const p = n => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+        };
+        const untilIso = toLocalDateStr(untilDate);
+        const startIso = toLocalDateStr(selDate);
         if (untilIso <= startIso) { Alert.alert('Validation', 'End date must be after the event date.'); return; }
         payload.recurrence_until = untilIso;
       }
@@ -462,33 +505,38 @@ export default function CalendarScreen({ navigation }) {
   // Filtered events
   const filteredEvents = activeFilter === 'all' ? events : events.filter(e => (e.event_type || '').toUpperCase() === activeFilter);
 
-  // Today's events
-  const todayKey = toDateKey(new Date().toISOString());
+  // Today's key uses Africa/Tunis local date (device-independent)
+  const todayUtcMs  = Date.now();
+  const todayLocal  = new Date(todayUtcMs + APP_TZ_OFFSET_H * 3600000);
+  const todayKey    = `${todayLocal.getUTCFullYear()}-${todayLocal.getUTCMonth()}-${todayLocal.getUTCDate()}`;
   const todayEvents = filteredEvents.filter(e => toDateKey(e.start_datetime) === todayKey);
 
-  // Week view: events from Mon→Sun of current week
-  const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay()); weekStart.setHours(0,0,0,0);
-  const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23,59,59,999);
+  // Week view: compute in UTC so device timezone doesn't shift day boundaries
+  const nowUtc     = Date.now() + APP_TZ_OFFSET_H * 3600000; // Africa/Tunis "now" in UTC ms
+  const nowLocal   = new Date(nowUtc);
+  const dowOffset  = nowLocal.getUTCDay(); // 0=Sun
+  const weekStartMs = nowUtc - dowOffset * 86400000 - (nowUtc % 86400000); // Sun 00:00 Africa/Tunis in UTC
+  const weekEndMs   = weekStartMs + 7 * 86400000- 1;
   const weekAllEvents = filteredEvents
-    .filter(e => { const d = new Date(e.start_datetime); return !isNaN(d) && d >= weekStart && d <= weekEnd; })
-    .sort((a, b) => new Date(a.start_datetime) - new Date(b.start_datetime));
+    .filter(e => { const d = parseDate(e.start_datetime); return !isNaN(d) && d.getTime() >= weekStartMs - APP_TZ_OFFSET_H*3600000 && d.getTime() <= weekEndMs - APP_TZ_OFFSET_H*3600000; })
+    .sort((a, b) => parseDate(a.start_datetime) - parseDate(b.start_datetime));
 
   // Group week events by day
   const weekByDay = DAY_NAMES.map((dayName, i) => {
-    const day = new Date(weekStart); day.setDate(weekStart.getDate() + i);
-    const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
-    return { dayName, day, events: filteredEvents.filter(e => toDateKey(e.start_datetime) === key) };
+    const dayLocal = new Date(weekStartMs + i * 86400000);
+    const key = `${dayLocal.getUTCFullYear()}-${dayLocal.getUTCMonth()}-${dayLocal.getUTCDate()}`;
+    return { dayName, day: dayLocal, events: filteredEvents.filter(e => toDateKey(e.start_datetime) === key) };
   });
 
-  // Month view: all events in calYear/calMonth
+  // Month view: compare in Africa/Tunis local
   const monthEvents = filteredEvents
-    .filter(e => { const d = new Date(e.start_datetime); return !isNaN(d) && d.getFullYear() === calYear && d.getMonth() === calMonth; })
-    .sort((a, b) => new Date(a.start_datetime) - new Date(b.start_datetime));
+    .filter(e => { const ld = localD(parseDate(e.start_datetime)); return !isNaN(ld) && ld.getUTCFullYear() === calYear && ld.getUTCMonth() === calMonth; })
+    .sort((a, b) => parseDate(a.start_datetime) - parseDate(b.start_datetime));
 
   // List view: all future events sorted
   const listEvents = filteredEvents
-    .filter(e => !isNaN(new Date(e.start_datetime)))
-    .sort((a, b) => new Date(a.start_datetime) - new Date(b.start_datetime));
+    .filter(e => !isNaN(parseDate(e.start_datetime)))
+    .sort((a, b) => parseDate(a.start_datetime) - parseDate(b.start_datetime));
 
 
   // Build event dot map for calendar

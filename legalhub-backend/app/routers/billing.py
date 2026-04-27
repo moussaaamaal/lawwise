@@ -2,7 +2,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase
-from app.core.email import send_invoice_email
+from app.core.email import send_invoice_email, send_payment_reminder_email
 from pydantic import BaseModel
 from typing import Optional, List
 from app.models.enums import InvoiceStatus
@@ -278,15 +278,43 @@ async def send_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
 
 @router.post("/{invoice_id}/reminder")
 async def send_reminder(invoice_id: str, current_user=Depends(get_lawyer)):
-    invoice = (
+    inv_res = (
         supabase.table("invoice")
-        .select("*, client(email, first_name)")
+        .select("*, client(id, first_name, last_name, email)")
         .eq("id", invoice_id)
         .eq("firm_id", current_user["firm_id"])
         .single()
         .execute()
     )
-    if not invoice.data:
+    if not inv_res.data:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    # TODO: Send reminder via SendGrid / Twilio
-    return {"message": "Payment reminder sent"}
+
+    inv    = inv_res.data
+    client = inv.get("client") or {}
+
+    client_email = client.get("email")
+    if not client_email:
+        raise HTTPException(status_code=400, detail="Client has no email address on file")
+
+    client_name = f"{client.get('first_name', '')} {client.get('last_name', '')}".strip() or "Client"
+    firm_res    = supabase.table("firm").select("name").eq("id", current_user["firm_id"]).single().execute()
+    firm_name   = firm_res.data.get("name", "LegalHub") if firm_res.data else "LegalHub"
+    lawyer_name = current_user.get("full_name") or current_user.get("email", "Your lawyer")
+
+    due_date_str = str(inv.get("due_date", "")) if inv.get("due_date") else "—"
+
+    try:
+        send_payment_reminder_email(
+            to_email       = client_email,
+            client_name    = client_name,
+            firm_name      = firm_name,
+            lawyer_name    = lawyer_name,
+            invoice_number = inv["invoice_number"],
+            due_date       = due_date_str,
+            total_amount   = float(inv.get("total_amount", 0)),
+            currency       = inv.get("currency", "USD"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Email delivery failed: {e}")
+
+    return {"message": f"Payment reminder sent to {client_email}"}

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Image, StyleSheet, SafeAreaView, StatusBar,
+  StyleSheet, SafeAreaView, StatusBar,
+  ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
-
+import { calendarAPI } from '../../services/api';
 import EventDetailsScreen from './EventDetailsScreen';
 
 const C = {
@@ -15,61 +16,150 @@ const C = {
   green50: '#F0FDF4', green100: '#DCFCE7', green600: '#16A34A',
   blue50: '#EFF6FF', blue100: '#DBEAFE', blue600: '#2563EB',
   purple50: '#FAF5FF', purple100: '#F3E8FF', purple600: '#9333EA',
-  indigo600: '#4F46E5',
 };
 
 const FILTER_TABS = ['All', 'Today', 'Tomorrow', 'This Week', 'Urgent'];
 
-const SCHEDULE_DATA = [
-  {
-    date: 'Today — March 6, 2026', isToday: true,
-    events: [
-      { time: '09:30', period: 'AM', title: 'Criminal Court Hearing', subtitle: 'State vs. Johnson - Room 305', priority: 'Urgent', priorityColor: C.red600, priorityBg: C.red50, tag: 'Criminal Law', borderColor: C.red500, timeBg: C.red100, timeColor: C.red600, client: 'Marcus Johnson', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', caseId: 'CR-2024-1247', actions: [{ lib: 'FA5', name: 'map-marker-alt', bg: C.blue50, color: C.primary }, { lib: 'FA', name: 'whatsapp', bg: C.green50, color: C.green600 }] },
-      { time: '11:00', period: 'AM', title: 'Client Meeting', subtitle: 'Contract Review - Office', priority: 'Medium', priorityColor: C.amber600, priorityBg: C.amber50, tag: 'Corporate', borderColor: C.amber500, timeBg: C.amber100, timeColor: C.amber600, client: 'Sarah Mitchell', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', caseId: 'CV-2024-0892', actions: [{ lib: 'FA5', name: 'phone', bg: C.blue50, color: C.primary }, { lib: 'FA5', name: 'envelope', bg: C.purple50, color: C.purple600 }] },
-      { time: '02:00', period: 'PM', title: 'Document Submission', subtitle: 'Civil Court - Case #2024-567', priority: 'Normal', priorityColor: C.blue600, priorityBg: C.blue50, tag: 'Civil Law', borderColor: C.secondary, timeBg: C.blue100, timeColor: C.blue600, client: 'Robert Chen', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', caseId: 'FM-2024-0453', actions: [{ lib: 'FA5', name: 'file-pdf', bg: C.green50, color: C.green600 }] },
-      { time: '04:30', period: 'PM', title: 'Team Strategy Meeting', subtitle: 'Weekly case review - Conference Room A', priority: 'Normal', priorityColor: C.blue600, priorityBg: C.blue50, tag: 'Internal', borderColor: C.secondary, timeBg: C.blue100, timeColor: C.blue600, client: 'Legal Team', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg', caseId: null, actions: [{ lib: 'FA5', name: 'video', bg: C.purple50, color: C.purple600 }] },
-    ],
-  },
-  {
-    date: 'Tomorrow — March 7, 2026', isToday: false,
-    events: [
-      { time: '10:00', period: 'AM', title: 'Personal Injury Hearing', subtitle: 'Williams vs. City Transit - Room 8', priority: 'Urgent', priorityColor: C.red600, priorityBg: C.red50, tag: 'Personal Injury', borderColor: C.red500, timeBg: C.red100, timeColor: C.red600, client: 'Jennifer Williams', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', caseId: 'PI-2024-0678', actions: [{ lib: 'FA5', name: 'gavel', bg: C.red50, color: C.red600 }, { lib: 'FA', name: 'whatsapp', bg: C.green50, color: C.green600 }] },
-      { time: '02:30', period: 'PM', title: 'Mediation Session', subtitle: 'Davis Employment Dispute', priority: 'Medium', priorityColor: C.amber600, priorityBg: C.amber50, tag: 'Employment', borderColor: C.amber500, timeBg: C.amber100, timeColor: C.amber600, client: 'Thomas Davis', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', caseId: 'EM-2024-0345', actions: [{ lib: 'FA5', name: 'handshake', bg: C.amber50, color: C.amber600 }, { lib: 'FA5', name: 'phone', bg: C.blue50, color: C.primary }] },
-    ],
-  },
-  {
-    date: 'March 18, 2026', isToday: false,
-    events: [
-      { time: '11:00', period: 'AM', title: 'Mitchell Corp. Hearing', subtitle: 'Breach of Contract - New York Civil Court', priority: 'Medium', priorityColor: C.amber600, priorityBg: C.amber50, tag: 'Corporate Law', borderColor: C.amber500, timeBg: C.amber100, timeColor: C.amber600, client: 'Sarah Mitchell', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', caseId: 'CV-2024-0892', actions: [{ lib: 'FA5', name: 'gavel', bg: C.amber50, color: C.amber600 }, { lib: 'FA5', name: 'envelope', bg: C.purple50, color: C.purple600 }] },
-    ],
-  },
-  {
-    date: 'March 19, 2026', isToday: false,
-    events: [
-      { time: '02:30', period: 'PM', title: 'Davis Mediation', subtitle: 'Wrongful Termination — NLRB', priority: 'Medium', priorityColor: C.amber600, priorityBg: C.amber50, tag: 'Employment Law', borderColor: C.amber500, timeBg: C.amber100, timeColor: C.amber600, client: 'Thomas Davis', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', caseId: 'EM-2024-0345', actions: [{ lib: 'FA5', name: 'handshake', bg: C.amber50, color: C.amber600 }] },
-      { time: '05:00', period: 'PM', title: 'Motion Filing Deadline', subtitle: 'State vs. Johnson — Manhattan Criminal Court', priority: 'Urgent', priorityColor: C.red600, priorityBg: C.red50, tag: 'Deadline', borderColor: C.red500, timeBg: C.red100, timeColor: C.red600, client: 'Marcus Johnson', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', caseId: 'CR-2024-1247', actions: [{ lib: 'FA5', name: 'bell', bg: C.red50, color: C.red600 }] },
-    ],
-  },
-  {
-    date: 'March 20, 2026', isToday: false,
-    events: [
-      { time: '02:00', period: 'PM', title: 'Chen Estate Planning Meeting', subtitle: 'Asset Distribution Review', priority: 'Normal', priorityColor: C.green600, priorityBg: C.green50, tag: 'Family Law', borderColor: C.green600, timeBg: C.green100, timeColor: C.green600, client: 'Robert Chen', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', caseId: 'FM-2024-0453', actions: [{ lib: 'FA5', name: 'users', bg: C.blue50, color: C.primary }, { lib: 'FA', name: 'whatsapp', bg: C.green50, color: C.green600 }] },
-    ],
-  },
-];
+// ─── Priorité selon le type d'événement ──────────────────────────────────────
+const getEventStyle = (eventType) => {
+  const t = (eventType || '').toUpperCase();
+  if (['HEARING', 'COURT_DATE'].includes(t))
+    return { label: 'Urgent',  color: C.red600,   bg: C.red50,   border: C.red500,   timeBg: C.red100,   timeColor: C.red600   };
+  if (['DEADLINE', 'FILING'].includes(t))
+    return { label: 'High',    color: C.amber600, bg: C.amber50, border: C.amber500, timeBg: C.amber100, timeColor: C.amber600 };
+  if (['MEDIATION', 'ARBITRATION', 'DEPOSITION'].includes(t))
+    return { label: 'Medium',  color: C.amber600, bg: C.amber50, border: C.amber500, timeBg: C.amber100, timeColor: C.amber600 };
+  return   { label: 'Normal',  color: C.blue600,  bg: C.blue50,  border: C.secondary,timeBg: C.blue100,  timeColor: C.blue600  };
+};
 
-const STATS = [
-  { val: '8', label: "Today's Events", iconBg: C.blue100,  iconColor: C.primary,  icon: 'calendar-day'  },
-  { val: '3', label: 'Urgent',         iconBg: C.red100,   iconColor: C.red600,   icon: 'exclamation'   },
-  { val: '5', label: 'This Week',      iconBg: C.green100, iconColor: C.green600, icon: 'calendar-week' },
-];
+const EVENT_TYPE_LABEL = {
+  HEARING:      'Court Hearing',
+  COURT_DATE:   'Court Date',
+  MEETING:      'Meeting',
+  CONSULTATION: 'Consultation',
+  DEADLINE:     'Deadline',
+  FILING:       'Filing',
+  DEPOSITION:   'Deposition',
+  MEDIATION:    'Mediation',
+  ARBITRATION:  'Arbitration',
+};
 
+// ─── Helpers date ─────────────────────────────────────────────────────────────
+
+// No UTC conversion — times are stored and displayed as entered by the user.
+const APP_TZ_OFFSET_H = 0;
+
+const parseDate = (iso) => {
+  if (!iso) return new Date(NaN);
+  const s = iso.trim().replace(' ', 'T');
+  const m = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)([+-])(\d{2}):?(\d{2})$/);
+  if (m) {
+    const baseMs = new Date(m[1] + 'Z').getTime();
+    const sign   = m[2] === '+' ? -1 : 1;
+    const offMs  = (parseInt(m[3]) * 60 + parseInt(m[4])) * 60000;
+    return new Date(baseMs + sign * offMs);
+  }
+  if (s.endsWith('Z')) return new Date(s);
+  return new Date(s + 'Z');
+};
+
+// Africa/Tunis local hour and shifted date (device-timezone-independent)
+const localH = (d) => (d.getUTCHours() + APP_TZ_OFFSET_H) % 24;
+const localM = (d) => d.getUTCMinutes();
+const localD = (d) => new Date(d.getTime() + APP_TZ_OFFSET_H * 3600000);
+
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+const formatGroupDate = (date) => {
+  const today    = startOfDay(new Date());
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  if (date.toDateString() === today.toDateString())    return 'Today';
+  if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+  return date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const groupByDate = (events) => {
+  const map = {};
+  for (const ev of events) {
+    const d   = localD(parseDate(ev.start_datetime)); // shift to Africa/Tunis
+    const key = d.toUTCString().slice(0, 16);         // "Mon, 27 Apr 2026" as stable key
+    if (!map[key]) map[key] = { date: d, events: [] };
+    map[key].events.push(ev);
+  }
+  return Object.entries(map)
+    .sort(([a], [b]) => new Date(a) - new Date(b))
+    .map(([key, { date, events }]) => ({
+      dateKey: key,
+      label:   formatGroupDate(date),
+      isToday: key === localD(new Date()).toUTCString().slice(0, 16),
+      events:  events.sort((a, b) => parseDate(a.start_datetime) - parseDate(b.start_datetime)),
+    }));
+};
+
+const applyFilter = (events, idx) => {
+  const today    = startOfDay(new Date());
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const weekEnd  = new Date(today); weekEnd.setDate(today.getDate() + 7);
+  switch (idx) {
+    case 1: return events.filter(ev => { const d = parseDate(ev.start_datetime); return d >= today && d < tomorrow; });
+    case 2: return events.filter(ev => { const d = parseDate(ev.start_datetime); return d >= tomorrow && d < new Date(tomorrow.getTime() + 86400000); });
+    case 3: return events.filter(ev => { const d = parseDate(ev.start_datetime); return d >= today && d < weekEnd; });
+    case 4: return events.filter(ev => ['HEARING', 'COURT_DATE', 'DEADLINE', 'FILING'].includes((ev.event_type || '').toUpperCase()));
+    default: return events;
+  }
+};
+
+// ─── ÉCRAN ────────────────────────────────────────────────────────────────────
 export default function AllScheduleScreen({ navigation }) {
-  const [activeFilter, setActiveFilter] = useState(0);
-  // Etat pour naviguer vers EventDetailsScreen
+  const [events,        setEvents]        = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [refreshing,    setRefreshing]    = useState(false);
+  const [error,         setError]         = useState(null);
+  const [activeFilter,  setActiveFilter]  = useState(0);
   const [selectedEvent, setSelectedEvent] = useState(null);
 
-  // Si un event est sélectionné → afficher la page détail
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const now  = new Date().toISOString();
+      const data = await calendarAPI.listEvents({ from_date: now });
+      setEvents(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.warn('Schedule load error:', e.message);
+      setError('Could not load events');
+    }
+  }, []);
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
+  // ── Stats calculées ───────────────────────────────────────────────────────
+  const todayStart = startOfDay(new Date());
+  const todayStr   = todayStart.toDateString();
+  const weekEnd    = new Date(todayStart); weekEnd.setDate(todayStart.getDate() + 7);
+
+  const todayCount  = events.filter(ev => new Date(ev.start_datetime).toDateString() === todayStr).length;
+  const urgentCount = events.filter(ev => ['HEARING', 'COURT_DATE', 'DEADLINE'].includes((ev.event_type || '').toUpperCase())).length;
+  const weekCount   = events.filter(ev => { const d = new Date(ev.start_datetime); return d >= todayStart && d < weekEnd; }).length;
+
+  const STATS = [
+    { val: String(todayCount),  label: "Today's Events", iconBg: C.blue100,  iconColor: C.primary,  icon: 'calendar-day'  },
+    { val: String(urgentCount), label: 'Urgent',         iconBg: C.red100,   iconColor: C.red600,   icon: 'exclamation'   },
+    { val: String(weekCount),   label: 'This Week',      iconBg: C.green100, iconColor: C.green600, icon: 'calendar-week' },
+  ];
+
+  // ── Filtrage et groupement ────────────────────────────────────────────────
+  const filtered = applyFilter(events, activeFilter);
+  const groups   = groupByDate(filtered);
+
+  // ── Navigation vers détail ────────────────────────────────────────────────
   if (selectedEvent) {
     return (
       <EventDetailsScreen
@@ -83,7 +173,7 @@ export default function AllScheduleScreen({ navigation }) {
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.primary} />
 
-      {/* HEADER */}
+      {/* ── Header ── */}
       <View style={s.header}>
         <View style={s.headerRow}>
           <TouchableOpacity style={s.backBtn} onPress={() => navigation?.goBack?.()}>
@@ -93,9 +183,6 @@ export default function AllScheduleScreen({ navigation }) {
             <Text style={s.headerTitle}>Schedule</Text>
             <Text style={s.headerSub}>All upcoming events & hearings</Text>
           </View>
-          <TouchableOpacity style={s.addBtn}>
-            <FontAwesome5 name="plus" size={14} color={C.white} />
-          </TouchableOpacity>
         </View>
 
         {/* Stats */}
@@ -112,7 +199,7 @@ export default function AllScheduleScreen({ navigation }) {
         </View>
       </View>
 
-      {/* FILTER TABS */}
+      {/* ── Filter tabs ── */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -130,112 +217,164 @@ export default function AllScheduleScreen({ navigation }) {
         ))}
       </ScrollView>
 
-      {/* LIST */}
-      <ScrollView
-        style={s.scroll}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {SCHEDULE_DATA.map((group, gi) => (
-          <View key={gi} style={{ marginBottom: 8 }}>
-
-            {/* Group header */}
-            <View style={s.groupHeader}>
-              <View style={[s.groupDot, { backgroundColor: group.isToday ? C.red500 : C.g400 }]} />
-              <Text style={[s.groupTitle, group.isToday && { color: C.primary }]}>{group.date}</Text>
-              {group.isToday && (
-                <View style={s.todayPill}>
-                  <Text style={s.todayPillTxt}>TODAY</Text>
-                </View>
-              )}
-              <Text style={s.groupCount}>{group.events.length} events</Text>
+      {/* ── Contenu ── */}
+      {loading ? (
+        <View style={s.center}>
+          <ActivityIndicator size="large" color={C.primary} />
+          <Text style={s.centerTxt}>Loading events…</Text>
+        </View>
+      ) : error ? (
+        <View style={s.center}>
+          <FontAwesome5 name="exclamation-circle" size={36} color={C.g400} />
+          <Text style={s.centerTxt}>{error}</Text>
+          <TouchableOpacity style={s.retryBtn} onPress={handleRefresh}>
+            <Text style={s.retryTxt}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          style={s.scroll}
+          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[C.primary]} tintColor={C.primary} />
+          }
+        >
+          {groups.length === 0 ? (
+            <View style={s.emptyBox}>
+              <FontAwesome5 name="calendar-times" size={40} color={C.g400} />
+              <Text style={s.emptyTitle}>No events found</Text>
+              <Text style={s.emptySubtitle}>
+                {activeFilter === 0 ? 'Your schedule is clear.' : `No events match the "${FILTER_TABS[activeFilter]}" filter.`}
+              </Text>
             </View>
+          ) : (
+            groups.map((group) => (
+              <View key={group.dateKey} style={{ marginBottom: 8 }}>
 
-            {/* Events */}
-            {group.events.map((ev, ei) => (
-              <View key={ei} style={[s.card, { borderLeftWidth: 4, borderLeftColor: ev.borderColor }]}>
-                <View style={s.cardTop}>
-                  {/* Time */}
-                  <View style={[s.timeBox, { backgroundColor: ev.timeBg }]}>
-                    <Text style={[s.timeVal, { color: ev.timeColor }]}>{ev.time}</Text>
-                    <Text style={[s.timePeriod, { color: ev.timeColor }]}>{ev.period}</Text>
-                  </View>
-                  {/* Info */}
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={s.eventTitle}>{ev.title}</Text>
-                    <Text style={s.eventSub}>{ev.subtitle}</Text>
-                    <View style={s.tagRow}>
-                      <View style={[s.pill, { backgroundColor: ev.priorityBg }]}>
-                        <Text style={[s.pillTxt, { color: ev.priorityColor }]}>{ev.priority}</Text>
-                      </View>
-                      <View style={[s.pill, { backgroundColor: C.g100 }]}>
-                        <Text style={[s.pillTxt, { color: C.g600 }]}>{ev.tag}</Text>
-                      </View>
+                {/* ── En-tête de groupe ── */}
+                <View style={s.groupHeader}>
+                  <View style={[s.groupDot, { backgroundColor: group.isToday ? C.red500 : C.g400 }]} />
+                  <Text style={[s.groupTitle, group.isToday && { color: C.primary }]}>{group.label}</Text>
+                  {group.isToday && (
+                    <View style={s.todayPill}>
+                      <Text style={s.todayPillTxt}>TODAY</Text>
                     </View>
-                  </View>
+                  )}
+                  <Text style={s.groupCount}>{group.events.length} event{group.events.length > 1 ? 's' : ''}</Text>
                 </View>
 
-                {/* Footer */}
-                <View style={s.cardFooter}>
-                  <View style={s.clientRow}>
-                    <Image source={{ uri: ev.avatar }} style={s.avatar} />
-                    <View style={{ marginLeft: 8 }}>
-                      <Text style={s.clientName}>{ev.client}</Text>
-                      {ev.caseId && <Text style={s.caseId}>{ev.caseId}</Text>}
-                    </View>
-                  </View>
-                  <View style={s.actionsRow}>
-                    {ev.actions.map((a, ai) => (
-                      <TouchableOpacity key={ai} style={[s.iconBtn, { backgroundColor: a.bg }]}>
-                        {a.lib === 'FA'
-                          ? <FontAwesome  name={a.name} size={14} color={a.color} />
-                          : <FontAwesome5 name={a.name} size={14} color={a.color} />}
-                      </TouchableOpacity>
-                    ))}
+                {/* ── Événements ── */}
+                {group.events.map((ev) => {
+                  const evStyle  = getEventStyle(ev.event_type);
+                  const dt       = parseDate(ev.start_datetime);
+                  const h        = localH(dt), m = localM(dt);
+                  const time     = `${h % 12 || 12}:${String(m).padStart(2, '0')}`;
+                  const period   = h >= 12 ? 'PM' : 'AM';
+                  const typeTag  = EVENT_TYPE_LABEL[(ev.event_type || '').toUpperCase()] || (ev.event_type || '').replace(/_/g, ' ');
+                  const caseTitle = ev.case_file?.title || null;
 
-                    {/* ✅ View button → navigate to EventDetailsScreen */}
-                    <TouchableOpacity
-                      style={s.viewBtn}
-                      onPress={() => setSelectedEvent(ev)}
-                    >
-                      <Text style={s.viewBtnTxt}>View</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                  return (
+                    <View key={ev.id} style={[s.card, { borderLeftWidth: 4, borderLeftColor: evStyle.border }]}>
+                      <View style={s.cardTop}>
+                        {/* Heure */}
+                        <View style={[s.timeBox, { backgroundColor: evStyle.timeBg }]}>
+                          <Text style={[s.timeVal,    { color: evStyle.timeColor }]}>{time}</Text>
+                          <Text style={[s.timePeriod, { color: evStyle.timeColor }]}>{period}</Text>
+                        </View>
+
+                        {/* Info */}
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={s.eventTitle} numberOfLines={1}>{ev.title}</Text>
+                          {ev.location ? (
+                            <Text style={s.eventSub} numberOfLines={1}>📍 {ev.location}</Text>
+                          ) : caseTitle ? (
+                            <Text style={s.eventSub} numberOfLines={1}>📁 {caseTitle}</Text>
+                          ) : null}
+                          <View style={s.tagRow}>
+                            <View style={[s.pill, { backgroundColor: evStyle.bg }]}>
+                              <Text style={[s.pillTxt, { color: evStyle.color }]}>{evStyle.label}</Text>
+                            </View>
+                            {typeTag ? (
+                              <View style={[s.pill, { backgroundColor: C.g100 }]}>
+                                <Text style={[s.pillTxt, { color: C.g600 }]}>{typeTag}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Footer */}
+                      <View style={s.cardFooter}>
+                        <View style={s.clientRow}>
+                          {/* Avatar placeholder */}
+                          <View style={s.avatarCircle}>
+                            <FontAwesome5 name="calendar-check" size={12} color={C.primary} />
+                          </View>
+                          <View style={{ marginLeft: 8 }}>
+                            {caseTitle ? (
+                              <Text style={s.clientName} numberOfLines={1}>{caseTitle}</Text>
+                            ) : (
+                              <Text style={[s.clientName, { color: C.g400 }]}>No case linked</Text>
+                            )}
+                            {ev.is_video_call && (
+                              <Text style={s.videoTag}>📹 Video call</Text>
+                            )}
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          style={s.viewBtn}
+                          onPress={() => setSelectedEvent(ev)}
+                        >
+                          <Text style={s.viewBtnTxt}>View</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
-            ))}
-          </View>
-        ))}
-      </ScrollView>
+            ))
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: C.primary },
-  scroll: { flex: 1, backgroundColor: C.g50 },
-  header: { backgroundColor: C.primary, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '800', color: C.white },
-  headerSub:   { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 1 },
-  addBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 16, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
-  statItem:  { alignItems: 'center', gap: 4 },
-  statIcon:  { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  statVal:   { fontSize: 18, fontWeight: '800', color: C.white },
-  statLabel: { fontSize: 10, color: 'rgba(255,255,255,0.72)' },
+  safe:       { flex: 1, backgroundColor: C.primary },
+  scroll:     { flex: 1, backgroundColor: C.g50 },
+  center:     { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.g50, gap: 12 },
+  centerTxt:  { fontSize: 13, color: C.g500 },
+  retryBtn:   { paddingHorizontal: 24, paddingVertical: 10, backgroundColor: C.primary, borderRadius: 12, marginTop: 4 },
+  retryTxt:   { color: C.white, fontWeight: '700', fontSize: 13 },
+
+  header:     { backgroundColor: C.primary, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },
+  headerRow:  { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  backBtn:    { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  headerTitle:{ fontSize: 17, fontWeight: '800', color: C.white },
+  headerSub:  { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 1 },
+
+  statsRow:   { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 16, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  statItem:   { alignItems: 'center', gap: 4 },
+  statIcon:   { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  statVal:    { fontSize: 18, fontWeight: '800', color: C.white },
+  statLabel:  { fontSize: 10, color: 'rgba(255,255,255,0.72)' },
+
   filterBar:        { backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.g200, maxHeight: 52, flexGrow: 0 },
   filterTab:        { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 12, backgroundColor: C.g100 },
   filterTabActive:  { backgroundColor: C.primary },
   filterTabTxt:     { fontSize: 12, fontWeight: '600', color: C.g600 },
-  filterTabTxtActive: { color: C.white },
+  filterTabTxtActive:{ color: C.white },
+
   groupHeader:  { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
   groupDot:     { width: 8, height: 8, borderRadius: 4 },
   groupTitle:   { fontSize: 14, fontWeight: '700', color: C.dark, flex: 1 },
   groupCount:   { fontSize: 11, color: C.g400 },
   todayPill:    { backgroundColor: C.red50, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   todayPillTxt: { fontSize: 10, fontWeight: '800', color: C.red600 },
+
   card:       { backgroundColor: C.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2, borderWidth: 1, borderColor: C.g100, marginBottom: 10 },
   cardTop:    { flexDirection: 'row', marginBottom: 12 },
   timeBox:    { width: 52, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
@@ -246,13 +385,16 @@ const s = StyleSheet.create({
   tagRow:     { flexDirection: 'row', gap: 6 },
   pill:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   pillTxt:    { fontSize: 11, fontWeight: '600' },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 1, borderTopColor: C.g100 },
-  clientRow:  { flexDirection: 'row', alignItems: 'center' },
-  avatar:     { width: 28, height: 28, borderRadius: 14 },
-  clientName: { fontSize: 12, fontWeight: '700', color: C.dark },
-  caseId:     { fontSize: 10, color: C.primary, fontWeight: '600' },
-  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  iconBtn:    { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  viewBtn:    { backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
-  viewBtnTxt: { fontSize: 12, fontWeight: '700', color: C.white },
+
+  cardFooter:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 1, borderTopColor: C.g100 },
+  clientRow:    { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  avatarCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.blue50, alignItems: 'center', justifyContent: 'center' },
+  clientName:   { fontSize: 12, fontWeight: '700', color: C.dark, maxWidth: 160 },
+  videoTag:     { fontSize: 10, color: C.g400, marginTop: 1 },
+  viewBtn:      { backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
+  viewBtnTxt:   { fontSize: 12, fontWeight: '700', color: C.white },
+
+  emptyBox:      { alignItems: 'center', paddingVertical: 60, gap: 12 },
+  emptyTitle:    { fontSize: 16, fontWeight: '700', color: C.dark },
+  emptySubtitle: { fontSize: 13, color: C.g400, textAlign: 'center' },
 });

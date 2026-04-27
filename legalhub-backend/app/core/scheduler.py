@@ -6,11 +6,15 @@ which is fine for a short-lived dev/PFE setup).
 """
 
 import logging
+import os
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from app.core.database import supabase
 from app.core.email import send_event_reminder_email
+
+DISPLAY_TZ = ZoneInfo(os.getenv("DISPLAY_TZ", "Africa/Tunis"))
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +27,18 @@ REMINDER_OFFSETS = [30, 60, 1440]   # 30 min, 1 h, 1 day
 
 def _check_and_send_reminders():
     try:
-        now = datetime.now(timezone.utc)
-        print(f"[scheduler] tick at {now.strftime('%H:%M:%S')} UTC", flush=True)
+        now       = datetime.now(timezone.utc)
+        now_local = now.astimezone(DISPLAY_TZ)
+        print(f"[scheduler] tick at {now_local.strftime('%H:%M:%S')} {DISPLAY_TZ.key}", flush=True)
 
         for offset in REMINDER_OFFSETS:
             target     = now + timedelta(minutes=offset)
             window_lo  = (target - timedelta(minutes=1)).isoformat()
             window_hi  = (target + timedelta(minutes=1)).isoformat()
+
+            # Log windows in local time for readability
+            lo_local = (target - timedelta(minutes=1)).astimezone(DISPLAY_TZ).strftime("%H:%M")
+            hi_local = (target + timedelta(minutes=1)).astimezone(DISPLAY_TZ).strftime("%H:%M")
 
             result = (
                 supabase.table("calendar_event")
@@ -39,7 +48,7 @@ def _check_and_send_reminders():
                 .execute()
             )
             events = result.data or []
-            print(f"[scheduler] offset={offset}min → window [{window_lo[:16]} – {window_hi[:16]}] → {len(events)} event(s)", flush=True)
+            print(f"[scheduler] offset={offset}min → window [{lo_local} – {hi_local}] (local) → {len(events)} event(s)", flush=True)
 
             for ev in events:
                 key = (ev["id"], offset)
@@ -65,7 +74,7 @@ def _check_and_send_reminders():
                 if not email:
                     continue
 
-                # Format start_datetime for display
+                # Display the time exactly as stored (no timezone conversion)
                 try:
                     dt = datetime.fromisoformat(ev["start_datetime"].replace("Z", "+00:00"))
                     dt_display = dt.strftime("%A %d %B %Y at %H:%M")

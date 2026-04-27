@@ -1,7 +1,7 @@
 // services/api.js
 import { getStoredToken, getStoredRefresh, storeTokens } from '../context/AuthContext';
 
-const BASE_URL = 'http://192.168.1.14:8000';
+const BASE_URL = 'http://192.168.1.12:8000';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const getAuthHeaders = async () => {
@@ -91,7 +91,7 @@ export const dashboardAPI = {
   stats:          () => request('GET', '/api/dashboard/stats'),
   today:          () => request('GET', '/api/dashboard/today'),
   recentCases:    () => request('GET', '/api/dashboard/recent-cases'),
-  recentActivity: () => request('GET', '/api/dashboard/recent-activity'),
+  recentActivity: (days = 3) => request('GET', `/api/dashboard/recent-activity?days=${days}`),
 };
 
 // ─── CASES ────────────────────────────────────────────────────────────────

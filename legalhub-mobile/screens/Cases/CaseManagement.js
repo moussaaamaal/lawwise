@@ -338,11 +338,11 @@ const rawToDetails = (raw) => {
     priority:    (raw.priority || 'NORMAL').toLowerCase(),
     status:      raw.status,
     filingDate:  raw.filing_date || '',
-    court:       raw.court_name       || '—',
-    judge:       raw.judge_name       || '—',
-    prosecutor:  raw.opposing_counsel || '—',
-    attorney:    '—',
-    caseValue:   raw.estimated_value ? `$${Number(raw.estimated_value).toLocaleString()}` : '—',
+    court:       raw.court_name       || '',
+    judge:       raw.judge_name       || '',
+    prosecutor:  raw.opposing_counsel || '',
+    attorney:    '',
+    caseValue:   raw.estimated_value ? `$${Number(raw.estimated_value).toLocaleString()}` : '',
     description: raw.description || '',
     tags:        [typeLabel, (raw.status || '').replace(/_/g, ' ')].filter(Boolean),
     nextHearing: hearingLabel
@@ -764,10 +764,156 @@ const toCardFormat = (c) => {
   };
 };
 
+// ─── ALL ACTIVITY SCREEN ─────────────────────────────────────────────────────
+function AllActivityScreen({ onBack }) {
+  const [activity, setActivity] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+
+  useEffect(() => {
+    dashboardAPI.recentActivity(7)
+      .then(data => setActivity(Array.isArray(data) ? data : []))
+      .catch(() => setActivity([]))
+      .finally(() => setLoading(false));
+  }, []);
+  const groupByDay = (items) => {
+    const groups = [];
+    const seen = {};
+    items.forEach(a => {
+      const d = a.created_at ? new Date(a.created_at) : null;
+      let label = 'Unknown';
+      if (d) {
+        const now = new Date(); now.setHours(0,0,0,0);
+        const day = new Date(d); day.setHours(0,0,0,0);
+        const diff = Math.round((now - day) / 86400000);
+        if (diff === 0)      label = 'Today';
+        else if (diff === 1) label = 'Yesterday';
+        else label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      }
+      if (!seen[label]) { seen[label] = true; groups.push({ label, items: [] }); }
+      groups[groups.length - 1].items.push(a);
+    });
+    return groups;
+  };
+
+  const groups = groupByDay(activity);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+
+      {/* Header */}
+      <View style={aa.header}>
+        <TouchableOpacity style={aa.backBtn} onPress={onBack}>
+          <FontAwesome5 name="arrow-left" size={15} color={C.dark} />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <Text style={aa.title}>All Activity</Text>
+          <Text style={aa.sub}>{loading ? 'Loading…' : `${activity.length} event${activity.length !== 1 ? 's' : ''} · Last 7 days`}</Text>
+        </View>
+        <View style={aa.liveWrap}>
+          <View style={aa.liveDot} />
+          <Text style={aa.liveText}>LIVE</Text>
+        </View>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+        {loading ? (
+          <View style={{ alignItems: 'center', paddingTop: 60 }}>
+            <ActivityIndicator size="large" color={C.primary} />
+            <Text style={{ color: '#9CA3AF', fontSize: 13, marginTop: 12 }}>Loading activity…</Text>
+          </View>
+        ) : activity.length === 0 ? (
+          <View style={aa.empty}>
+            <View style={aa.emptyIcon}>
+              <FontAwesome5 name="history" size={28} color="#D1D5DB" />
+            </View>
+            <Text style={aa.emptyTitle}>No activity yet</Text>
+            <Text style={aa.emptySub}>Actions on cases will appear here</Text>
+          </View>
+        ) : groups.map(group => (
+          <View key={group.label}>
+            {/* Day separator */}
+            <View style={aa.dayRow}>
+              <View style={aa.dayLine} />
+              <View style={aa.dayPill}>
+                <Text style={aa.dayTxt}>{group.label}</Text>
+              </View>
+              <View style={aa.dayLine} />
+            </View>
+
+            {/* Cards */}
+            <View style={aa.groupCard}>
+              {group.items.map((a, i) => {
+                const meta    = getActivityMeta(a.action);
+                const relTime = getRelativeTime(a.created_at);
+                const cf      = a.case_file;
+                const isLast  = i === group.items.length - 1;
+                return (
+                  <View key={a.id ?? i} style={[aa.row, !isLast && aa.rowDivider]}>
+                    <View style={[aa.iconWrap, { backgroundColor: meta.bg }]}>
+                      <Icon lib="FA5" name={meta.icon} size={16} color={meta.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <Text style={aa.action} numberOfLines={2}>{formatAction(a.action)}</Text>
+                        <View style={[aa.timePill, { backgroundColor: meta.bg }]}>
+                          <FontAwesome5 name="clock" size={8} color={meta.color} />
+                          <Text style={[aa.timeText, { color: meta.color }]}>{relTime}</Text>
+                        </View>
+                      </View>
+                      {cf && (
+                        <View style={aa.casePill}>
+                          <FontAwesome5 name="folder-open" size={9} color={C.primary} />
+                          <Text style={aa.casePillText} numberOfLines={1}>{cf.title}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const aa = StyleSheet.create({
+  header:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  backBtn:    { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  title:      { fontSize: 17, fontWeight: '800', color: C.dark },
+  sub:        { fontSize: 12, color: '#9CA3AF', marginTop: 1 },
+  liveWrap:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  liveDot:    { width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A' },
+  liveText:   { fontSize: 9, fontWeight: '800', color: '#16A34A', letterSpacing: 0.5 },
+  // day separator
+  dayRow:     { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginTop: 18, marginBottom: 10 },
+  dayLine:    { flex: 1, height: 1, backgroundColor: '#E5E7EB' },
+  dayPill:    { paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, backgroundColor: '#F3F4F6', marginHorizontal: 10 },
+  dayTxt:     { fontSize: 11, fontWeight: '700', color: '#6B7280' },
+  // group card
+  groupCard:  { marginHorizontal: 16, backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  row:        { flexDirection: 'row', alignItems: 'flex-start', padding: 16, gap: 14 },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  iconWrap:   { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  action:     { fontSize: 13, fontWeight: '700', color: C.dark, lineHeight: 19, flex: 1 },
+  timePill:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, flexShrink: 0 },
+  timeText:   { fontSize: 10, fontWeight: '800' },
+  casePill:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, alignSelf: 'flex-start', maxWidth: '95%' },
+  casePillText:{ fontSize: 11, fontWeight: '600', color: C.primary },
+  // empty
+  empty:      { alignItems: 'center', paddingTop: 80 },
+  emptyIcon:  { width: 72, height: 72, borderRadius: 22, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#374151' },
+  emptySub:   { fontSize: 13, color: '#9CA3AF', marginTop: 6 },
+});
+
 // ─── ÉCRAN ─────────────────────────────────────────────────────────────────
 export default function CaseManagement({ navigation }) {
   const [selectedCase,     setSelectedCase]     = useState(null);
   const [showAddCase,      setShowAddCase]      = useState(false);
+  const [showAllActivity,  setShowAllActivity]  = useState(false);
   const [cases,            setCases]            = useState([]);
   const [loading,          setLoading]          = useState(true);
   const [refreshing,       setRefreshing]       = useState(false);
@@ -946,11 +1092,15 @@ export default function CaseManagement({ navigation }) {
     );
   }
 
+  if (showAllActivity) {
+    return <AllActivityScreen onBack={() => setShowAllActivity(false)} />;
+  }
+
   // Si un case est sélectionné, on affiche CaseDetailsScreen
   if (selectedCase) {
     return (
       <CaseDetailsScreen
-        navigation={{ goBack: () => setSelectedCase(null) }}
+        navigation={{ goBack: () => { setSelectedCase(null); loadCases(); } }}
         route={{ params: { caseData: selectedCase } }}
       />
     );
@@ -1284,7 +1434,7 @@ export default function CaseManagement({ navigation }) {
                 <View style={act.liveDot} />
                 <Text style={act.liveText}>LIVE</Text>
               </View>
-              <TouchableOpacity style={act.viewAllBtn} onPress={() => navigation?.navigate?.('Calendar')}>
+              <TouchableOpacity style={act.viewAllBtn} onPress={() => setShowAllActivity(true)}>
                 <Text style={act.viewAllText}>View All</Text>
                 <Icon lib="FA5" name="chevron-right" size={10} color={C.primary} />
               </TouchableOpacity>
@@ -1459,10 +1609,7 @@ export default function CaseManagement({ navigation }) {
                     </View>
                   </View>
 
-                  {/* Arrow */}
-                  <TouchableOpacity style={[ev.arrowBtn, { backgroundColor: accentBg }]}>
-                    <Icon lib="FA5" name="chevron-right" size={12} color={accent} />
-                  </TouchableOpacity>
+
                 </View>
               );
             })}

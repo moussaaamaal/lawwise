@@ -18,6 +18,7 @@ import AddNoteScreen    from './TasksNotes/AddNoteScreen';
 import ScheduleScreen   from './Schedule/ScheduleScreen';
 import InvoiceScreen    from './Invoices/InvoiceScreen';
 import AddTaskScreen    from './TasksNotes/AddTaskScreen';
+import VoiceNoteScreen  from './TasksNotes/VoiceNoteScreen';
 
 // ─── COULEURS ────────────────────────────────────────────────────────────────
 const C = {
@@ -91,6 +92,14 @@ const ACTIONS = [
     gradTo:   '#0D9488',
     desc:     'Generate client invoice',
   },
+  {
+    screen:   'VoiceNote',
+    icon:     'microphone',
+    label:    'Voice Note',
+    gradFrom: '#DC2626',
+    gradTo:   '#B91C1C',
+    desc:     'Record an audio note',
+  },
 ];
 
 // ─── COMPOSANT CARTE D'ACTION ────────────────────────────────────────────────
@@ -143,6 +152,7 @@ export default function QuickAddScreen({ navigation }) {
   if (currentScreen === 'Schedule')  return <ScheduleScreen  {...screenProps} />;
   if (currentScreen === 'Invoice')   return <InvoiceScreen   {...screenProps} />;
   if (currentScreen === 'AddTask')   return <AddTaskScreen   {...screenProps} />;
+  if (currentScreen === 'VoiceNote') return <VoiceNoteScreen {...screenProps} />;
 
   // ── Vue principale : sélecteur de formulaire ──
   return (

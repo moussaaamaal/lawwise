@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, Alert,
-  StyleSheet, SafeAreaView, StatusBar, Image, Dimensions, ActivityIndicator,
+  StyleSheet, SafeAreaView, StatusBar, Image, Dimensions, ActivityIndicator, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { casesAPI, tasksAPI, documentsAPI, notesAPI, calendarAPI, billingAPI } from '../../services/api';
@@ -110,6 +110,101 @@ const TABS = [
   { key: 'notes',     icon: 'sticky-note',  label: 'Notes'     },
   { key: 'timeline',  icon: 'stream',       label: 'Timeline'  },
 ];
+
+// ─── RICH TEXT (markdown inline renderer) ─────────────────────────────────────
+const NOTE_COLORS = [
+  { id: 'yellow', bg: '#FEF9C3', border: '#FDE047', dot: '#EAB308' },
+  { id: 'blue',   bg: '#DBEAFE', border: '#93C5FD', dot: '#3B82F6' },
+  { id: 'green',  bg: '#DCFCE7', border: '#86EFAC', dot: '#22C55E' },
+  { id: 'pink',   bg: '#FCE7F3', border: '#F9A8D4', dot: '#EC4899' },
+  { id: 'purple', bg: '#F3E8FF', border: '#D8B4FE', dot: '#A855F7' },
+  { id: 'orange', bg: '#FFEDD5', border: '#FED7AA', dot: '#F97316' },
+];
+const NOTE_TAGS = ['Client Meeting', 'Research', 'Court Prep', 'Strategy', 'Reminder', 'Important', 'Follow-up', 'Confidential'];
+
+const parseInline = (text, inherited = {}) => {
+  if (!text) return [];
+  const patterns = [
+    { re: /^\*\*\*(.+?)\*\*\*/, bold: true, italic: true },
+    { re: /^\*\*(.+?)\*\*/,     bold: true               },
+    { re: /^__(.+?)__/,                      underline: true },
+    { re: /^\*(.+?)\*/,         italic: true              },
+  ];
+  const parts = [];
+  let i = 0;
+  while (i < text.length) {
+    let matched = false;
+    for (const p of patterns) {
+      const m = p.re.exec(text.slice(i));
+      if (m) {
+        if (m.index > 0) parts.push({ text: text.slice(i, i + m.index), ...inherited });
+        const formats = { ...inherited, ...(p.bold && { bold: true }), ...(p.italic && { italic: true }), ...(p.underline && { underline: true }) };
+        parts.push(...parseInline(m[1], formats));
+        i += m.index + m[0].length;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      const nextSpecial = text.slice(i).search(/\*\*\*|\*\*|__|(?<!\*)\*(?!\*)/);
+      const take = nextSpecial === -1 ? text.length - i : nextSpecial || 1;
+      parts.push({ text: text.slice(i, i + take), ...inherited });
+      i += take;
+    }
+  }
+  return parts;
+};
+
+const getCanonicalSelection = (fullContent, start, end) => {
+  const PAIRS = [['***__','__***'],['***','***'],['**__','__**'],['*__','__*'],['__','__'],['**','**'],['*','*']];
+  for (const [pre, suf] of PAIRS) {
+    const ps = start - pre.length, pe = end + suf.length;
+    if (ps >= 0 && pe <= fullContent.length && fullContent.substring(ps, start) === pre && fullContent.substring(end, pe) === suf)
+      return { start: ps, end: pe };
+  }
+  return { start, end };
+};
+
+const parseFlags = (text) => {
+  const f = { bold: false, italic: false, underline: false };
+  let t = text;
+  if (t.startsWith('***') && t.endsWith('***') && t.length > 6)      { f.bold = true; f.italic = true; t = t.slice(3,-3); }
+  else if (t.startsWith('**') && t.endsWith('**') && t.length > 4)   { f.bold = true; t = t.slice(2,-2); }
+  else if (t.startsWith('*') && t.endsWith('*') && t.length > 2)     { f.italic = true; t = t.slice(1,-1); }
+  if (t.startsWith('__') && t.endsWith('__') && t.length > 4)        f.underline = true;
+  return f;
+};
+
+const getInner = (text, flags) => {
+  let t = text;
+  if      (flags.bold && flags.italic && t.startsWith('***')) t = t.slice(3,-3);
+  else if (flags.bold  && t.startsWith('**'))                  t = t.slice(2,-2);
+  else if (flags.italic && t.startsWith('*'))                  t = t.slice(1,-1);
+  if (flags.underline && t.startsWith('__'))                   t = t.slice(2,-2);
+  return t;
+};
+
+const buildFormatted = (inner, flags) => {
+  let t = inner;
+  if (flags.underline)                 t = `__${t}__`;
+  if      (flags.bold && flags.italic) t = `***${t}***`;
+  else if (flags.bold)                 t = `**${t}**`;
+  else if (flags.italic)               t = `*${t}*`;
+  return t;
+};
+
+const RichText = ({ text, style, numberOfLines }) => {
+  const parts = parseInline(text || '');
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.map((p, idx) => (
+        <Text key={idx} style={{ fontWeight: p.bold ? '700' : undefined, fontStyle: p.italic ? 'italic' : undefined, textDecorationLine: p.underline ? 'underline' : undefined }}>
+          {p.text}
+        </Text>
+      ))}
+    </Text>
+  );
+};
 
 // ─── TINY HELPERS ─────────────────────────────────────────────────────────────
 const Badge = ({ label, color, bg, size = 11 }) => (
@@ -231,28 +326,128 @@ const NOTE_STYLES = [
   { bg: C.purple50, border: C.purple600 },
 ];
 const toNoteDisplay = (note, idx) => {
-  const style    = NOTE_STYLES[idx % NOTE_STYLES.length];
-  const dateLabel = note.created_at
+  const raw         = note.content || '';
+  const colorMatch  = raw.match(/^\[color:(\w+)\]\n?/);
+  const colorId     = colorMatch ? colorMatch[1] : null;
+  const theme       = NOTE_COLORS.find(c => c.id === colorId);
+  const fallbacks   = [
+    { bg: C.amber50,  border: C.amber600  },
+    { bg: C.blue50,   border: C.primary   },
+    { bg: C.purple50, border: C.purple600 },
+  ];
+  const style       = theme
+    ? { bg: theme.bg, border: theme.border }
+    : fallbacks[idx % fallbacks.length];
+  const content     = colorMatch ? raw.slice(colorMatch[0].length) : raw;
+  const dateLabel   = note.created_at
     ? new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : '—';
   return {
     id: note.id, author: note.author_name || 'Team Member',
     avatar: note.author_avatar || null,
-    title: note.title || 'Note', content: note.content || '',
+    content,
     time: dateLabel, borderColor: style.border, bg: style.bg,
   };
 };
 
+// ─── TIMELINE ACTION CLEANER ──────────────────────────────────────────────────
+const STATUS_LABELS = {
+  NEW: 'Case Restored', ACTIVE: 'Case Activated', OPEN: 'Case Opened',
+  CLOSED: 'Case Closed', PENDING: 'Case set to Pending',
+  ARCHIVED: 'Case Archived', IN_PROGRESS: 'Case In Progress', ON_HOLD: 'Case On Hold',
+};
+const EVENT_TYPE_LABELS = {
+  HEARING: 'Hearing', MEETING: 'Meeting', DEADLINE: 'Deadline',
+  CONSULTATION: 'Consultation', COURT_DATE: 'Court Date', OTHER: 'Event',
+};
+const RECUR_LABELS = { daily: '· Daily', weekly: '· Weekly', monthly: '· Monthly', yearly: '· Yearly' };
+
+const cleanAction = (raw = '') => {
+  const s = raw.trim();
+
+  // "status changed to casestatus.NEW"
+  const statusM = s.match(/status changed to (?:\w+\.)?(\w+)/i);
+  if (statusM) {
+    const key = statusM[1].toUpperCase();
+    return STATUS_LABELS[key] || `Status → ${key.charAt(0) + key.slice(1).toLowerCase().replace(/_/g, ' ')}`;
+  }
+
+  // "event created : My Event (eventtype.HEARING) (repeats weekly)"
+  const eventM = s.match(/event (\w+)\s*[:\-]\s*(.+?)\s*\((?:\w+\.)?(\w+)\)(.*)/i);
+  if (eventM) {
+    const verb     = eventM[1].charAt(0).toUpperCase() + eventM[1].slice(1).toLowerCase();
+    const name     = eventM[2].trim();
+    const typeKey  = eventM[3].toUpperCase();
+    const typeLabel = EVENT_TYPE_LABELS[typeKey] || eventM[3];
+    const rest     = eventM[4].toLowerCase();
+    const recur    = Object.entries(RECUR_LABELS).find(([k]) => rest.includes(k));
+    return `${typeLabel} ${verb}: ${name}${recur ? ' ' + recur[1] : ''}`;
+  }
+
+  // Generic: strip enum patterns like "casestatus.ACTIVE", "eventtype.HEARING"
+  return s
+    .replace(/\b\w+type\.\w+\b/gi, m => { const v = m.split('.')[1]; return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase(); })
+    .replace(/\b\w+status\.\w+\b/gi, m => { const v = m.split('.')[1]; return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase().replace(/_/g, ' '); })
+    .replace(/\(repeats \w+\)/gi, '')
+    .replace(/\s+/g, ' ').trim()
+    .replace(/^./, c => c.toUpperCase());
+};
+
 // ─── TIMELINE ADAPTER ─────────────────────────────────────────────────────────
+const TL_META = (action = '') => {
+  const a = action.toLowerCase();
+  if (a.includes('document') || a.includes('file') || a.includes('upload'))
+    return { icon: 'file-alt',          color: '#DC2626', bg: '#FEE2E2', accent: '#DC2626' };
+  if (a.includes('note'))
+    return { icon: 'sticky-note',       color: '#7C3AED', bg: '#EDE9FE', accent: '#7C3AED' };
+  if (a.includes('task'))
+    return { icon: 'check-square',      color: '#D97706', bg: '#FEF3C7', accent: '#D97706' };
+  if (a.includes('hearing') || a.includes('court'))
+    return { icon: 'gavel',             color: '#1D4ED8', bg: '#DBEAFE', accent: '#1D4ED8' };
+  if (a.includes('meeting') || a.includes('consultation'))
+    return { icon: 'user-friends',      color: '#0891B2', bg: '#CFFAFE', accent: '#0891B2' };
+  if (a.includes('invoice') || a.includes('payment') || a.includes('billing'))
+    return { icon: 'file-invoice-dollar', color: '#059669', bg: '#D1FAE5', accent: '#059669' };
+  if (a.includes('status') || a.includes('update') || a.includes('edit'))
+    return { icon: 'pen',               color: '#0F766E', bg: '#CCFBF1', accent: '#0F766E' };
+  if (a.includes('create') || a.includes('open') || a.includes('added'))
+    return { icon: 'plus-circle',       color: '#16A34A', bg: '#DCFCE7', accent: '#16A34A' };
+  if (a.includes('close') || a.includes('archive'))
+    return { icon: 'archive',           color: '#6B7280', bg: '#F3F4F6', accent: '#6B7280' };
+  return   { icon: 'history',           color: '#1E40AF', bg: '#EFF6FF', accent: '#1E40AF' };
+};
+
+const relativeTime = (dateStr) => {
+  if (!dateStr) return '—';
+  const now  = new Date();
+  const date = new Date(dateStr);
+  const diff = Math.floor((now - date) / 1000);
+  if (diff < 60)          return 'Just now';
+  if (diff < 3600)        return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400)       return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 172800)      return 'Yesterday';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+};
+
+const dayKey = (dateStr) => {
+  if (!dateStr) return 'Unknown';
+  const now  = new Date(); now.setHours(0,0,0,0);
+  const date = new Date(dateStr); date.setHours(0,0,0,0);
+  const diff = Math.round((now - date) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+};
+
 const toTimelineDisplay = (item) => {
-  const dateLabel = item.created_at
-    ? new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : '—';
+  const meta = TL_META(item.action || '');
   return {
-    id: item.id, icon: 'history', color: '#fff', bg: C.primary,
-    title: item.action || 'Activity',
-    desc: item.performed_by_name || item.performed_by || '',
-    time: dateLabel, badge: 'Update', badgeColor: C.primary, badgeBg: C.blue50,
+    id:     item.id,
+    action: cleanAction(item.action),
+    actor:  item.performed_by_name || 'System',
+    time:   relativeTime(item.created_at),
+    day:    dayKey(item.created_at),
+    ...meta,
   };
 };
 
@@ -424,10 +619,10 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
               { icon: 'briefcase',    color: C.indigo600, label: 'Type',             value: form.caseType    },
               { icon: 'layer-group',  color: C.purple600, label: 'Phase',            value: form.phase       },
               { icon: 'calendar',     color: C.teal600,   label: 'Filing Date',      value: form.filingDate  },
-              { icon: 'calendar-alt', color: C.red600,    label: 'Next Hearing',     value: form.nextHearing || '—' },
+              { icon: 'calendar-alt', color: C.red600,    label: 'Next Hearing',     value: form.nextHearing },
               { icon: 'user-tie',     color: C.amber600,  label: 'Attorney',         value: form.attorney    },
               { icon: 'landmark',     color: C.primary,   label: 'Court Location',   value: form.court       },
-            ].map(({ icon, color, label, value }) => (
+            ].filter(({ value }) => value && String(value).trim() !== '' && value !== '—').map(({ icon, color, label, value }) => (
               <View key={label} style={ov.infoRow}>
                 <View style={[ov.infoIcon, { backgroundColor: color + '18' }]}>
                   <FontAwesome5 name={icon} size={13} color={color} />
@@ -440,6 +635,7 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
             ))}
 
             {/* Priority badge */}
+            {PRIORITY[form.priority] && (
             <View style={ov.infoRow}>
               <View style={[ov.infoIcon, { backgroundColor: PRIORITY[form.priority]?.color + '18' }]}>
                 <FontAwesome5 name={PRIORITY[form.priority]?.icon} size={13} color={PRIORITY[form.priority]?.color} />
@@ -453,6 +649,7 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
                 </View>
               </View>
             </View>
+            )}
 
             {/* Tags */}
             {form.tags.length > 0 && (
@@ -513,24 +710,6 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
         })}
       </Card>
 
-      {/* Time Tracking */}
-      <Card accent={C.teal600}>
-        <SectionHead icon="stopwatch" iconColor={C.teal600} title="Time Tracking" action="Details" />
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
-          {[
-            { label: 'Billable', value: '47.5', unit: 'hrs', color: C.teal600, bg: '#F0FDFA', pct: '75%' },
-            { label: 'Non-Billable', value: '12.3', unit: 'hrs', color: C.g500, bg: C.g50, pct: '25%' },
-          ].map(t => (
-            <View key={t.label} style={[ov.timeCard, { backgroundColor: t.bg }]}>
-              <Text style={ov.timeCardLabel}>{t.label}</Text>
-              <Text style={[ov.timeCardValue, { color: t.color }]}>{t.value}<Text style={ov.timeCardUnit}> {t.unit}</Text></Text>
-              <View style={ov.timeBarBg}>
-                <View style={[ov.timeBarFill, { width: t.pct, backgroundColor: t.color }]} />
-              </View>
-            </View>
-          ))}
-        </View>
-      </Card>
 
       {/* AI Card */}
       <View style={ov.aiCard}>
@@ -777,19 +956,62 @@ const dc = StyleSheet.create({
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: TASKS
 // ═════════════════════════════════════════════════════════════════════════════
-const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false }) => {
-  const [tasks, setTasks] = useState(propTasks.map(toTaskDisplay));
+const TASK_PRIORITIES = ['NORMAL', 'MEDIUM', 'HIGH', 'URGENT'];
+const TASK_PRI_COLORS = { NORMAL: C.g500, MEDIUM: C.amber600, HIGH: C.orange600 ?? '#EA580C', URGENT: C.red600 };
+
+const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false, caseId }) => {
+  const [tasks,       setTasks]       = useState(propTasks.map(toTaskDisplay));
+  const [showAdd,     setShowAdd]     = useState(false);
+  const [addTitle,    setAddTitle]    = useState('');
+  const [addPriority, setAddPriority] = useState('NORMAL');
+  const [addDue,      setAddDue]      = useState('');
+  const [addLoading,  setAddLoading]  = useState(false);
+
   useEffect(() => { setTasks(propTasks.map(toTaskDisplay)); }, [propTasks]);
-  const toggle = (id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+
   const count = stats.tasks ?? tasks.length;
   const done  = tasks.filter(t => t.done).length;
   const pct   = tasks.length > 0 ? done / tasks.length : 0;
 
+  const toggle = async (id) => {
+    const task    = tasks.find(t => t.id === id);
+    if (!task) return;
+    const newStatus = task.done ? 'PENDING' : 'COMPLETED';
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+    try {
+      await tasksAPI.updateStatus(id, newStatus);
+    } catch {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, done: task.done } : t));
+      Alert.alert('Error', 'Could not update task status.');
+    }
+  };
+
+  const handleAdd = async () => {
+    if (!addTitle.trim()) { Alert.alert('Required', 'Please enter a task title.'); return; }
+    setAddLoading(true);
+    try {
+      const created = await tasksAPI.create({
+        title:    addTitle.trim(),
+        priority: addPriority,
+        due_date: addDue.trim() || null,
+        case_id:  caseId || null,
+      });
+      setTasks(prev => [...prev, toTaskDisplay(created)]);
+      setShowAdd(false);
+      setAddTitle('');
+      setAddPriority('NORMAL');
+      setAddDue('');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not create task.');
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
   return (
     <View style={{ paddingTop: 4 }}>
-      {/* Progress overview */}
       <Card accent={C.amber600}>
-        <SectionHead icon="tasks" iconColor={C.amber600} title={`Tasks (${count})`} action="+ Add Task" />
+        <SectionHead icon="tasks" iconColor={C.amber600} title={`Tasks (${count})`} action="+ Add Task" onAction={() => setShowAdd(true)} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
           <View style={tk.progCircle}>
             <Text style={tk.progPct}>{Math.round(pct * 100)}%</Text>
@@ -830,42 +1052,173 @@ const TasksTab = ({ tasks: propTasks = [], stats = {}, loading = false }) => {
                 </View>
                 {task.assignee ? <Text style={tk.assignee}>{task.assignee}</Text> : null}
               </View>
-              <TouchableOpacity style={{ padding: 6 }}>
-                <FontAwesome5 name="ellipsis-v" size={14} color={C.g400} />
-              </TouchableOpacity>
             </View>
           );
         })}
       </Card>
+
+      {/* ── Add Task Modal ── */}
+      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={tk.modalOverlay}>
+          <View style={tk.modalSheet}>
+            <View style={tk.modalHeader}>
+              <Text style={tk.modalTitle}>New Task</Text>
+              <TouchableOpacity onPress={() => setShowAdd(false)}>
+                <FontAwesome5 name="times" size={16} color={C.g500} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={tk.fieldLabel}>Title *</Text>
+            <TextInput
+              style={tk.input}
+              placeholder="Task title"
+              value={addTitle}
+              onChangeText={setAddTitle}
+              autoFocus
+            />
+
+            <Text style={tk.fieldLabel}>Priority</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {TASK_PRIORITIES.map(p => (
+                <TouchableOpacity
+                  key={p}
+                  onPress={() => setAddPriority(p)}
+                  style={[tk.priChip, addPriority === p && { backgroundColor: TASK_PRI_COLORS[p], borderColor: TASK_PRI_COLORS[p] }]}
+                >
+                  <Text style={[tk.priChipTxt, addPriority === p && { color: C.white }]}>{p}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={tk.fieldLabel}>Due Date (YYYY-MM-DD)</Text>
+            <TextInput
+              style={tk.input}
+              placeholder="e.g. 2025-06-30"
+              value={addDue}
+              onChangeText={setAddDue}
+              keyboardType="numbers-and-punctuation"
+            />
+
+            <TouchableOpacity
+              style={[tk.submitBtn, addLoading && { opacity: 0.6 }]}
+              onPress={handleAdd}
+              disabled={addLoading}
+            >
+              {addLoading
+                ? <ActivityIndicator color={C.white} />
+                : <Text style={tk.submitTxt}>Add Task</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 };
 
 const tk = StyleSheet.create({
-  progCircle:  { width: 64, height: 64, borderRadius: 32, backgroundColor: C.amber50, borderWidth: 3, borderColor: C.amber600, alignItems: 'center', justifyContent: 'center' },
-  progPct:     { fontSize: 16, fontWeight: '900', color: C.amber600 },
-  progSub:     { fontSize: 9, color: C.amber600, fontWeight: '600' },
-  progLabel:   { fontSize: 12, color: C.g600, fontWeight: '600', marginBottom: 8 },
-  progBarBg:   { height: 8, backgroundColor: C.g200, borderRadius: 4, overflow: 'hidden' },
-  progBarFill: { height: 8, borderRadius: 4, backgroundColor: C.amber600 },
-  row:         { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: C.g50, borderRadius: 16, padding: 14, marginBottom: 10 },
-  check:       { width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: C.g300, alignItems: 'center', justifyContent: 'center', marginTop: 2, flexShrink: 0 },
-  title:       { fontSize: 13, fontWeight: '700', color: C.dark },
-  duePill:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  dueTxt:      { fontSize: 10, fontWeight: '700' },
-  assignee:    { fontSize: 11, color: C.g500, marginTop: 5 },
+  progCircle:   { width: 64, height: 64, borderRadius: 32, backgroundColor: C.amber50, borderWidth: 3, borderColor: C.amber600, alignItems: 'center', justifyContent: 'center' },
+  progPct:      { fontSize: 16, fontWeight: '900', color: C.amber600 },
+  progSub:      { fontSize: 9, color: C.amber600, fontWeight: '600' },
+  progLabel:    { fontSize: 12, color: C.g600, fontWeight: '600', marginBottom: 8 },
+  progBarBg:    { height: 8, backgroundColor: C.g200, borderRadius: 4, overflow: 'hidden' },
+  progBarFill:  { height: 8, borderRadius: 4, backgroundColor: C.amber600 },
+  row:          { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: C.g50, borderRadius: 16, padding: 14, marginBottom: 10 },
+  check:        { width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: C.g300, alignItems: 'center', justifyContent: 'center', marginTop: 2, flexShrink: 0 },
+  title:        { fontSize: 13, fontWeight: '700', color: C.dark },
+  duePill:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  dueTxt:       { fontSize: 10, fontWeight: '700' },
+  assignee:     { fontSize: 11, color: C.g500, marginTop: 5 },
+  // modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalSheet:   { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36 },
+  modalHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  modalTitle:   { fontSize: 17, fontWeight: '800', color: C.dark },
+  fieldLabel:   { fontSize: 12, fontWeight: '700', color: C.g600, marginBottom: 6 },
+  input:        { borderWidth: 1, borderColor: C.g200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: C.dark, marginBottom: 16 },
+  priChip:      { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5, borderColor: C.g200, alignItems: 'center' },
+  priChipTxt:   { fontSize: 10, fontWeight: '700', color: C.g500 },
+  submitBtn:    { backgroundColor: C.amber600, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  submitTxt:    { color: C.white, fontWeight: '800', fontSize: 15 },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  TAB: NOTES
 // ═════════════════════════════════════════════════════════════════════════════
-const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false }) => {
-  const items = propNotes.map(toNoteDisplay);
-  const count = stats.notes ?? items.length;
+const AMBER = '#D97706';
+
+const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false, caseId }) => {
+  const [notes,         setNotes]         = useState(propNotes);
+  const [showAdd,       setShowAdd]       = useState(false);
+  const [expanded,      setExpanded]      = useState({});
+
+  // form state
+  const [title,         setTitle]         = useState('');
+  const [content,       setContent]       = useState('');
+  const [selectedColor, setSelectedColor] = useState('yellow');
+  const [selectedTags,  setSelectedTags]  = useState([]);
+  const [saving,        setSaving]        = useState(false);
+  const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false });
+
+  const contentInputRef = useRef(null);
+  const selectionRef    = useRef({ start: 0, end: 0 });
+
+  useEffect(() => { setNotes(propNotes); }, [propNotes]);
+
+  const count        = stats.notes ?? notes.length;
+  const currentTheme = NOTE_COLORS.find(c => c.id === selectedColor) || NOTE_COLORS[0];
+
+  const toggleTag = (tag) =>
+    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+
+  const toggleFormat = (formatKey) => {
+    const { start, end } = selectionRef.current;
+    const before   = content.substring(0, start);
+    const selected = content.substring(start, end);
+    const after    = content.substring(end);
+    const flags    = parseFlags(selected);
+    const inner    = getInner(selected, flags);
+    flags[formatKey] = !flags[formatKey];
+    const newSelected = buildFormatted(inner, flags);
+    setContent(before + newSelected + after);
+    setActiveFormats({ ...flags });
+    const newEnd = start + newSelected.length;
+    selectionRef.current = { start, end: newEnd };
+    setTimeout(() => contentInputRef.current?.setNativeProps({ selection: { start, end: newEnd } }), 30);
+  };
+
+  const resetForm = () => {
+    setTitle(''); setContent(''); setSelectedColor('yellow');
+    setSelectedTags([]); setActiveFormats({ bold: false, italic: false, underline: false });
+  };
+
+  const handleSave = async () => {
+    if (!content.trim()) { Alert.alert('Required', 'Please write some content.'); return; }
+    const fullContent = [
+      `[color:${selectedColor}]\n`,
+      title.trim() ? `**${title.trim()}**\n` : '',
+      content.trim(),
+      selectedTags.length ? `\n\nTags: ${selectedTags.join(', ')}` : '',
+    ].join('');
+    setSaving(true);
+    try {
+      const created = await notesAPI.create({ case_id: caseId, content: fullContent });
+      setNotes(prev => [created, ...prev]);
+      setShowAdd(false);
+      resetForm();
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not save note.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const items = notes.map(toNoteDisplay);
+
   return (
     <View style={{ paddingTop: 4 }}>
       <Card accent={C.purple600}>
-        <SectionHead icon="sticky-note" iconColor={C.purple600} title={`Notes (${count})`} action="+ Add Note" />
+        <SectionHead icon="sticky-note" iconColor={C.purple600} title={`Notes (${count})`} action="+ Add Note" onAction={() => setShowAdd(true)} />
         {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
         {!loading && items.length === 0 && (
           <View style={ov.emptyBox}>
@@ -873,46 +1226,216 @@ const NotesTab = ({ notes: propNotes = [], stats = {}, loading = false }) => {
             <Text style={ov.emptyTxt}>No notes yet</Text>
           </View>
         )}
-        {!loading && items.map(note => (
-          <View key={note.id} style={[nt.card, { backgroundColor: note.bg, borderLeftColor: note.borderColor }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-              {note.avatar ? (
-                <Image source={{ uri: note.avatar }} style={nt.avatar} />
-              ) : (
-                <View style={[nt.avatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
-                  <FontAwesome5 name="user" size={14} color={C.primary} />
+        {!loading && items.map(note => {
+          const isExpanded = !!expanded[note.id];
+          return (
+            <View key={note.id} style={[nt.card, { backgroundColor: note.bg, borderLeftColor: note.borderColor }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                {note.avatar
+                  ? <Image source={{ uri: note.avatar }} style={nt.avatar} />
+                  : <View style={[nt.avatar, { backgroundColor: C.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+                      <FontAwesome5 name="user" size={14} color={C.primary} />
+                    </View>
+                }
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={nt.author}>{note.author}</Text>
+                  <Text style={nt.time}>{note.time}</Text>
                 </View>
-              )}
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={nt.author}>{note.author}</Text>
-                <Text style={nt.time}>{note.time}</Text>
               </View>
-              <TouchableOpacity>
-                <FontAwesome5 name="ellipsis-v" size={14} color={C.g400} />
+              <RichText
+                text={note.content}
+                style={{ fontSize: 13, color: C.g600, lineHeight: 20 }}
+                numberOfLines={isExpanded ? undefined : 4}
+              />
+              <TouchableOpacity
+                style={[nt.readMore, { borderTopColor: note.borderColor + '40' }]}
+                onPress={() => setExpanded(prev => ({ ...prev, [note.id]: !prev[note.id] }))}
+              >
+                <Text style={[nt.readMoreTxt, { color: note.borderColor }]}>{isExpanded ? 'Show less' : 'Read more'}</Text>
+                <FontAwesome5 name={isExpanded ? 'chevron-up' : 'chevron-right'} size={10} color={note.borderColor} />
               </TouchableOpacity>
             </View>
-            <Text style={nt.title}>{note.title}</Text>
-            <Text style={nt.content} numberOfLines={3}>{note.content}</Text>
-            <TouchableOpacity style={[nt.readMore, { borderTopColor: note.borderColor + '30' }]}>
-              <Text style={[nt.readMoreTxt, { color: note.borderColor }]}>Read more</Text>
-              <FontAwesome5 name="chevron-right" size={10} color={note.borderColor} />
-            </TouchableOpacity>
-          </View>
-        ))}
+          );
+        })}
       </Card>
+
+      {/* ── Add Note Modal ── */}
+      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => { setShowAdd(false); resetForm(); }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={nt.modalOverlay}>
+            <View style={nt.modalSheet}>
+              {/* Header */}
+              <View style={nt.modalHeader}>
+                <Text style={nt.modalTitle}>New Note</Text>
+                <TouchableOpacity onPress={() => { setShowAdd(false); resetForm(); }}>
+                  <FontAwesome5 name="times" size={16} color={C.g500} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+                {/* Preview */}
+                <View style={[nt.preview, { backgroundColor: currentTheme.bg, borderColor: currentTheme.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <View style={[nt.colorDot, { backgroundColor: currentTheme.dot }]} />
+                    <Text style={{ fontSize: 11, color: C.g500 }}>
+                      {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </Text>
+                  </View>
+                  {title ? <Text style={nt.previewTitle}>{title}</Text> : null}
+                  {content
+                    ? <RichText text={content} style={{ fontSize: 13, color: C.g600, lineHeight: 20 }} numberOfLines={3} />
+                    : <Text style={{ fontSize: 13, color: C.g400, fontStyle: 'italic' }}>Start typing your note…</Text>
+                  }
+                  {selectedTags.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+                      {selectedTags.map(t => (
+                        <View key={t} style={[nt.previewTag, { backgroundColor: currentTheme.border + '66' }]}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: currentTheme.dot }}>{t}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* Title */}
+                <Text style={nt.fieldLabel}>Title</Text>
+                <TextInput
+                  style={nt.titleInput}
+                  placeholder="Note title..."
+                  placeholderTextColor={C.g400}
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={80}
+                />
+
+                {/* Content */}
+                <Text style={[nt.fieldLabel, { marginTop: 14 }]}>Content *</Text>
+                <TextInput
+                  ref={contentInputRef}
+                  style={nt.contentInput}
+                  placeholder="Write your note here..."
+                  placeholderTextColor={C.g400}
+                  value={content}
+                  onChangeText={setContent}
+                  onSelectionChange={({ nativeEvent: { selection } }) => {
+                    const { start, end } = selection;
+                    if (start !== end) {
+                      const canonical = getCanonicalSelection(content, start, end);
+                      selectionRef.current = canonical;
+                      setActiveFormats(parseFlags(content.substring(canonical.start, canonical.end)));
+                    } else {
+                      selectionRef.current = selection;
+                      setActiveFormats({ bold: false, italic: false, underline: false });
+                    }
+                  }}
+                  multiline
+                  textAlignVertical="top"
+                />
+
+                {/* Formatting toolbar */}
+                <View style={nt.toolbar}>
+                  {[{ icon: 'bold', key: 'bold' }, { icon: 'italic', key: 'italic' }, { icon: 'underline', key: 'underline' }].map(t => {
+                    const active = activeFormats[t.key];
+                    return (
+                      <TouchableOpacity key={t.key} style={[nt.toolbarBtn, active && { backgroundColor: AMBER }]} onPress={() => toggleFormat(t.key)}>
+                        <FontAwesome5 name={t.icon} size={13} color={active ? C.white : C.dark} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Color picker */}
+                <Text style={[nt.fieldLabel, { marginTop: 16 }]}>Color</Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                  {NOTE_COLORS.map(c => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[nt.colorBtn, { backgroundColor: c.bg, borderColor: c.border }, selectedColor === c.id && { borderWidth: 3 }]}
+                      onPress={() => setSelectedColor(c.id)}
+                    >
+                      <View style={[nt.colorDot, { backgroundColor: c.dot }]} />
+                      {selectedColor === c.id && (
+                        <View style={nt.colorCheck}>
+                          <FontAwesome5 name="check" size={8} color={C.white} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Tags */}
+                <Text style={nt.fieldLabel}>Tags</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                  {NOTE_TAGS.map(tag => {
+                    const active = selectedTags.includes(tag);
+                    return (
+                      <TouchableOpacity
+                        key={tag}
+                        style={[nt.tagBtn, active && { backgroundColor: AMBER, borderColor: AMBER }]}
+                        onPress={() => toggleTag(tag)}
+                      >
+                        {active && <FontAwesome5 name="check" size={9} color={C.white} style={{ marginRight: 4 }} />}
+                        <Text style={[{ fontSize: 12, fontWeight: '600', color: C.g600 }, active && { color: C.white }]}>{tag}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              {/* Footer */}
+              <View style={nt.footer}>
+                <TouchableOpacity style={nt.cancelBtn} onPress={() => { setShowAdd(false); resetForm(); }} disabled={saving}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: C.g600 }}>Discard</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[nt.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+                  {saving
+                    ? <ActivityIndicator color={C.white} />
+                    : <><FontAwesome5 name="sticky-note" size={13} color={C.white} /><Text style={{ color: C.white, fontWeight: '700', fontSize: 14, marginLeft: 8 }}>Save Note</Text></>
+                  }
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 };
 
 const nt = StyleSheet.create({
-  card:       { borderLeftWidth: 4, borderRadius: 16, padding: 14, marginBottom: 12 },
-  avatar:     { width: 36, height: 36, borderRadius: 10 },
-  author:     { fontSize: 13, fontWeight: '700', color: C.dark },
-  time:       { fontSize: 10, color: C.g400, marginTop: 1 },
-  title:      { fontSize: 14, fontWeight: '800', color: C.dark, marginBottom: 6 },
-  content:    { fontSize: 13, color: C.g600, lineHeight: 20 },
-  readMore:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
-  readMoreTxt:{ fontSize: 12, fontWeight: '700' },
+  card:         { borderLeftWidth: 4, borderRadius: 16, padding: 14, marginBottom: 12 },
+  avatar:       { width: 36, height: 36, borderRadius: 10 },
+  author:       { fontSize: 13, fontWeight: '700', color: C.dark },
+  time:         { fontSize: 10, color: C.g400, marginTop: 1 },
+  readMore:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, paddingTop: 8, borderTopWidth: 1 },
+  readMoreTxt:  { fontSize: 12, fontWeight: '700' },
+  // modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalSheet:   { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8, maxHeight: '92%' },
+  modalHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  modalTitle:   { fontSize: 17, fontWeight: '800', color: C.dark },
+  // preview
+  preview:      { borderRadius: 16, borderWidth: 2, padding: 14, marginBottom: 16 },
+  previewTitle: { fontSize: 15, fontWeight: '700', color: C.dark, marginBottom: 6 },
+  previewTag:   { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  // fields
+  fieldLabel:   { fontSize: 12, fontWeight: '700', color: C.g600, marginBottom: 6 },
+  titleInput:   { fontSize: 15, fontWeight: '600', color: C.dark, borderBottomWidth: 1.5, borderBottomColor: C.g200, paddingBottom: 8, marginBottom: 4 },
+  contentInput: { fontSize: 14, color: C.dark, minHeight: 110, lineHeight: 22, borderWidth: 1.5, borderColor: C.g200, borderRadius: 12, padding: 12 },
+  // toolbar
+  toolbar:      { flexDirection: 'row', gap: 6, paddingTop: 8, marginBottom: 4 },
+  toolbarBtn:   { width: 36, height: 36, borderRadius: 8, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center' },
+  // color
+  colorBtn:     { width: 40, height: 40, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  colorDot:     { width: 16, height: 16, borderRadius: 8 },
+  colorCheck:   { position: 'absolute', bottom: -5, right: -5, width: 14, height: 14, borderRadius: 7, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center' },
+  // tags
+  tagBtn:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: C.g200 },
+  // footer
+  footer:       { flexDirection: 'row', gap: 12, paddingVertical: 14, borderTopWidth: 1, borderTopColor: C.g100 },
+  cancelBtn:    { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: C.g200, alignItems: 'center', justifyContent: 'center' },
+  saveBtn:      { flex: 1, flexDirection: 'row', backgroundColor: AMBER, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -927,11 +1450,66 @@ const STATUS_META = {
 };
 
 const InvoicesTab = ({ invoices = [], loading = false }) => {
+  const [actionLoading, setActionLoading] = useState({});   // { [invId_action]: true }
+  const [viewInvoice,   setViewInvoice]   = useState(null); // invoice object to preview
+
   const totalAmount  = invoices.reduce((s, inv) => s + (inv.total_amount || 0), 0);
   const paidAmount   = invoices.filter(i => i.status === 'PAID').reduce((s, i) => s + (i.total_amount || 0), 0);
   const pendingCount = invoices.filter(i => i.status === 'PENDING' || i.status === 'OVERDUE').length;
 
   const fmt = (n) => n?.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }) ?? '$0';
+
+  const setLoading = (id, action, val) =>
+    setActionLoading(prev => ({ ...prev, [`${id}_${action}`]: val }));
+  const isLoading = (id, action) => !!actionLoading[`${id}_${action}`];
+
+  const handleSend = (inv) => {
+    Alert.alert(
+      'Send Invoice',
+      `Send invoice ${inv.invoice_number} to the client?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send', style: 'default',
+          onPress: async () => {
+            setLoading(inv.id, 'send', true);
+            try {
+              await billingAPI.sendInvoice(inv.id);
+              Alert.alert('Sent', `Invoice ${inv.invoice_number} has been sent.`);
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Could not send invoice.');
+            } finally {
+              setLoading(inv.id, 'send', false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRemind = (inv) => {
+    Alert.alert(
+      'Send Reminder',
+      `Send a payment reminder for ${inv.invoice_number}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Reminder', style: 'default',
+          onPress: async () => {
+            setLoading(inv.id, 'remind', true);
+            try {
+              await billingAPI.sendReminder(inv.id);
+              Alert.alert('Reminder Sent', `Reminder for ${inv.invoice_number} has been sent.`);
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Could not send reminder.');
+            } finally {
+              setLoading(inv.id, 'remind', false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View style={{ paddingTop: 4 }}>
@@ -1025,19 +1603,33 @@ const InvoicesTab = ({ invoices = [], loading = false }) => {
 
               {/* Actions */}
               <View style={inv_s.actions}>
-                <TouchableOpacity style={inv_s.actionBtn}>
+                <TouchableOpacity style={inv_s.actionBtn} onPress={() => setViewInvoice(inv)}>
                   <FontAwesome5 name="eye" size={11} color={C.primary} />
                   <Text style={[inv_s.actionTxt, { color: C.primary }]}>View</Text>
                 </TouchableOpacity>
                 {inv.status === 'DRAFT' && (
-                  <TouchableOpacity style={[inv_s.actionBtn, { backgroundColor: C.green50 }]}>
-                    <FontAwesome5 name="paper-plane" size={11} color={C.green600} />
+                  <TouchableOpacity
+                    style={[inv_s.actionBtn, { backgroundColor: C.green50 }, isLoading(inv.id, 'send') && { opacity: 0.5 }]}
+                    onPress={() => handleSend(inv)}
+                    disabled={isLoading(inv.id, 'send')}
+                  >
+                    {isLoading(inv.id, 'send')
+                      ? <ActivityIndicator size={11} color={C.green600} />
+                      : <FontAwesome5 name="paper-plane" size={11} color={C.green600} />
+                    }
                     <Text style={[inv_s.actionTxt, { color: C.green600 }]}>Send</Text>
                   </TouchableOpacity>
                 )}
                 {(inv.status === 'PENDING' || inv.status === 'OVERDUE') && (
-                  <TouchableOpacity style={[inv_s.actionBtn, { backgroundColor: C.amber50 }]}>
-                    <FontAwesome5 name="bell" size={11} color={C.amber600} />
+                  <TouchableOpacity
+                    style={[inv_s.actionBtn, { backgroundColor: C.amber50 }, isLoading(inv.id, 'remind') && { opacity: 0.5 }]}
+                    onPress={() => handleRemind(inv)}
+                    disabled={isLoading(inv.id, 'remind')}
+                  >
+                    {isLoading(inv.id, 'remind')
+                      ? <ActivityIndicator size={11} color={C.amber600} />
+                      : <FontAwesome5 name="bell" size={11} color={C.amber600} />
+                    }
                     <Text style={[inv_s.actionTxt, { color: C.amber600 }]}>Remind</Text>
                   </TouchableOpacity>
                 )}
@@ -1046,6 +1638,80 @@ const InvoicesTab = ({ invoices = [], loading = false }) => {
           );
         })}
       </Card>
+
+      {/* ── Invoice Detail Modal ── */}
+      <Modal visible={!!viewInvoice} transparent animationType="slide" onRequestClose={() => setViewInvoice(null)}>
+        <View style={inv_s.modalOverlay}>
+          <View style={inv_s.modalSheet}>
+            {viewInvoice && (() => {
+              const inv  = viewInvoice;
+              const meta = STATUS_META[inv.status] || STATUS_META.DRAFT;
+              const clientName = inv.client
+                ? `${inv.client.first_name || ''} ${inv.client.last_name || ''}`.trim()
+                : '—';
+              const dueDate = inv.due_date
+                ? new Date(inv.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                : '—';
+              const issueDate = inv.issue_date
+                ? new Date(inv.issue_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                : '—';
+              return (
+                <>
+                  {/* Header */}
+                  <View style={inv_s.modalHeader}>
+                    <View>
+                      <Text style={inv_s.modalInvNum}>{inv.invoice_number}</Text>
+                      <Text style={inv_s.modalClient}>{clientName}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View style={[inv_s.statusBadge, { backgroundColor: meta.bg }]}>
+                        <Text style={[inv_s.statusTxt, { color: meta.color }]}>{meta.label}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setViewInvoice(null)}>
+                        <FontAwesome5 name="times" size={16} color={C.g500} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Dates */}
+                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={inv_s.modalFieldLabel}>Issue Date</Text>
+                      <Text style={inv_s.modalFieldValue}>{issueDate}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={inv_s.modalFieldLabel}>Due Date</Text>
+                      <Text style={[inv_s.modalFieldValue, inv.status === 'OVERDUE' && { color: C.red600 }]}>{dueDate}</Text>
+                    </View>
+                  </View>
+
+                  {/* Items */}
+                  {inv.invoice_item && inv.invoice_item.length > 0 && (
+                    <View style={inv_s.itemsBox}>
+                      <Text style={inv_s.modalFieldLabel}>Items</Text>
+                      {inv.invoice_item.map((item, idx) => (
+                        <View key={idx} style={[inv_s.itemRow, { paddingVertical: 6 }]}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={inv_s.itemDesc}>{item.description}</Text>
+                            <Text style={{ fontSize: 11, color: C.g400 }}>Qty: {item.quantity} × {fmt(item.unit_price)}</Text>
+                          </View>
+                          <Text style={[inv_s.itemPrice, { fontSize: 13 }]}>{fmt(item.quantity * item.unit_price)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Total */}
+                  <View style={inv_s.totalRow}>
+                    <Text style={inv_s.totalLabel}>Total</Text>
+                    <Text style={inv_s.totalValue}>{fmt(inv.total_amount)}</Text>
+                  </View>
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1082,6 +1748,18 @@ const inv_s = StyleSheet.create({
   actions:      { flexDirection: 'row', gap: 8 },
   actionBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.blue50, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
   actionTxt:    { fontSize: 12, fontWeight: '700' },
+
+  // Modal
+  modalOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalSheet:      { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, maxHeight: '85%' },
+  modalHeader:     { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 },
+  modalInvNum:     { fontSize: 17, fontWeight: '900', color: C.dark },
+  modalClient:     { fontSize: 13, color: C.g500, marginTop: 2 },
+  modalFieldLabel: { fontSize: 11, color: C.g400, fontWeight: '600', marginBottom: 3 },
+  modalFieldValue: { fontSize: 13, fontWeight: '700', color: C.dark },
+  totalRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1.5, borderTopColor: C.g200, paddingTop: 12, marginTop: 4 },
+  totalLabel:      { fontSize: 14, fontWeight: '800', color: C.dark },
+  totalValue:      { fontSize: 22, fontWeight: '900', color: C.green600 },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1089,49 +1767,127 @@ const inv_s = StyleSheet.create({
 // ═════════════════════════════════════════════════════════════════════════════
 const TimelineTab = ({ timeline: propTimeline = [], loading = false }) => {
   const items = propTimeline.map(toTimelineDisplay);
+
+  // Group by day
+  const groups = [];
+  const seen   = {};
+  items.forEach(item => {
+    if (!seen[item.day]) { seen[item.day] = true; groups.push({ day: item.day, entries: [] }); }
+    groups[groups.length - 1].entries.push(item);
+  });
+
   return (
     <View style={{ paddingTop: 4 }}>
-      <Card>
-        <SectionHead icon="stream" iconColor={C.primary} title="Case Timeline" />
-        {loading && <ActivityIndicator color={C.primary} style={{ marginVertical: 20 }} />}
-        {!loading && items.length === 0 && (
-          <View style={ov.emptyBox}>
-            <FontAwesome5 name="history" size={28} color={C.g300} />
-            <Text style={ov.emptyTxt}>No activity yet</Text>
+
+      {/* Header card */}
+      <View style={tl.header}>
+        <View style={tl.headerLeft}>
+          <View style={tl.headerIcon}>
+            <FontAwesome5 name="stream" size={16} color={C.white} />
           </View>
-        )}
-        {!loading && items.map((item, idx) => (
-          <View key={item.id} style={tl.row}>
-            <View style={tl.spine}>
-              <View style={[tl.dot, { backgroundColor: item.bg }]}>
-                <FontAwesome5 name={item.icon} size={12} color={item.color} />
-              </View>
-              {idx < items.length - 1 && <View style={tl.line} />}
-            </View>
-            <View style={tl.content}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Text style={tl.title} numberOfLines={2}>{item.title}</Text>
-                <Text style={tl.time}>{item.time}</Text>
-              </View>
-              {item.desc ? <Text style={tl.desc}>{item.desc}</Text> : null}
-              <Badge label={item.badge} color={item.badgeColor} bg={item.badgeBg} size={10} />
-            </View>
+          <View>
+            <Text style={tl.headerTitle}>Case Timeline</Text>
+            <Text style={tl.headerSub}>{items.length} {items.length === 1 ? 'event' : 'events'}</Text>
           </View>
-        ))}
-      </Card>
+        </View>
+      </View>
+
+      {loading && (
+        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+          <ActivityIndicator color={C.primary} size="large" />
+          <Text style={{ color: C.g400, fontSize: 12, marginTop: 10 }}>Loading activity…</Text>
+        </View>
+      )}
+
+      {!loading && items.length === 0 && (
+        <View style={tl.empty}>
+          <View style={tl.emptyIcon}>
+            <FontAwesome5 name="stream" size={28} color={C.g300} />
+          </View>
+          <Text style={tl.emptyTitle}>No activity yet</Text>
+          <Text style={tl.emptySub}>Events will appear here as the case progresses</Text>
+        </View>
+      )}
+
+      {!loading && groups.map((group) => (
+        <View key={group.day}>
+          {/* Day label */}
+          <View style={tl.dayRow}>
+            <View style={tl.dayLine} />
+            <View style={tl.dayPill}>
+              <Text style={tl.dayTxt}>{group.day}</Text>
+            </View>
+            <View style={tl.dayLine} />
+          </View>
+
+          {/* Events */}
+          {group.entries.map((item, idx) => (
+            <View key={item.id} style={tl.entryRow}>
+              {/* Spine */}
+              <View style={tl.spine}>
+                <View style={[tl.dot, { backgroundColor: item.bg, shadowColor: item.accent }]}>
+                  <FontAwesome5 name={item.icon} size={13} color={item.color} />
+                </View>
+                {idx < group.entries.length - 1 && (
+                  <View style={tl.spineLineWrap}>
+                    <View style={[tl.spineLine, { borderColor: item.accent + '30' }]} />
+                  </View>
+                )}
+              </View>
+
+              {/* Card */}
+              <View style={[tl.card, { borderLeftColor: item.accent }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <Text style={tl.actionTxt} numberOfLines={2}>{item.action}</Text>
+                  <Text style={tl.timeTxt}>{item.time}</Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      ))}
+
+      <View style={{ height: 24 }} />
     </View>
   );
 };
 
 const tl = StyleSheet.create({
-  row:     { flexDirection: 'row', marginBottom: 4 },
-  spine:   { alignItems: 'center', width: 40, marginRight: 14 },
-  dot:     { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  line:    { width: 2, flex: 1, backgroundColor: C.g200, marginVertical: 4 },
-  content: { flex: 1, paddingBottom: 22 },
-  title:   { fontSize: 13, fontWeight: '700', color: C.dark, flex: 1, marginRight: 8, marginBottom: 3 },
-  time:    { fontSize: 10, color: C.g400, flexShrink: 0, paddingTop: 2 },
-  desc:    { fontSize: 12, color: C.g500, lineHeight: 17, marginBottom: 8 },
+  // Header
+  header:       { marginHorizontal: 16, marginBottom: 16, backgroundColor: C.primary, borderRadius: 20, padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerLeft:   { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  headerIcon:   { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  headerTitle:  { fontSize: 16, fontWeight: '800', color: '#fff' },
+  headerSub:    { fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+
+  // Empty
+  empty:        { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },
+  emptyIcon:    { width: 72, height: 72, borderRadius: 22, backgroundColor: C.g100, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyTitle:   { fontSize: 16, fontWeight: '800', color: C.dark, marginBottom: 6 },
+  emptySub:     { fontSize: 13, color: C.g400, textAlign: 'center', lineHeight: 19 },
+
+  // Day separator
+  dayRow:       { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginVertical: 12 },
+  dayLine:      { flex: 1, height: 1, backgroundColor: C.g200 },
+  dayPill:      { paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, backgroundColor: C.g100, marginHorizontal: 10 },
+  dayTxt:       { fontSize: 11, fontWeight: '700', color: C.g500 },
+
+  // Entry row
+  entryRow:     { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 2 },
+
+  // Spine
+  spine:        { width: 44, alignItems: 'center' },
+  dot:          { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.18, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  spineLineWrap:{ flex: 1, alignItems: 'center', paddingVertical: 3 },
+  spineLine:    { width: 2, flex: 1, borderLeftWidth: 2, borderStyle: 'dashed', minHeight: 16 },
+
+  // Card
+  card:         { flex: 1, marginLeft: 12, marginBottom: 10, backgroundColor: C.white, borderRadius: 16, padding: 14, borderLeftWidth: 3, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  actionTxt:    { flex: 1, fontSize: 13, fontWeight: '700', color: C.dark, marginRight: 8, lineHeight: 18 },
+  timeTxt:      { fontSize: 10, color: C.g400, flexShrink: 0, marginTop: 1 },
+  actorRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  actorDot:     { width: 6, height: 6, borderRadius: 3 },
+  actorTxt:     { fontSize: 11, color: C.g500, fontWeight: '600' },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1245,9 +2001,9 @@ export default function CaseDetailsScreen({ navigation, route }) {
     switch (activeTab) {
       case 'overview':  return <OverviewTab  caseData={caseData} events={events} stats={stats} editMode={editMode} setEditMode={setEditMode} form={form} setForm={setForm} />;
       case 'documents': return <DocumentsTab documents={documents} stats={stats} loading={tabLoading} caseId={caseData._id} onUploaded={(n) => setStats(s => ({ ...s, docs: n }))} />;
-      case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} />;
+      case 'tasks':     return <TasksTab     tasks={tasks}     stats={stats} loading={tabLoading} caseId={caseData._id} />;
       case 'invoices':  return <InvoicesTab  invoices={invoices}            loading={tabLoading} />;
-      case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} />;
+      case 'notes':     return <NotesTab     notes={notes}     stats={stats} loading={tabLoading} caseId={caseData._id} />;
       case 'timeline':  return <TimelineTab  timeline={timeline}            loading={tabLoading} />;
     }
   };
@@ -1274,6 +2030,25 @@ export default function CaseDetailsScreen({ navigation, route }) {
             <FontAwesome5 name="arrow-left" size={15} color={C.white} />
           </TouchableOpacity>
           <Text style={sc.navTitle}>Case Details</Text>
+          <TouchableOpacity
+            style={sc.navBtn}
+            onPress={() => Alert.alert('Archive Case', 'Are you sure you want to archive this case?', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Archive', style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await casesAPI.archive(caseData._id);
+                    navigation?.goBack?.();
+                  } catch (err) {
+                    Alert.alert('Error', err.message || 'Could not archive this case.');
+                  }
+                },
+              },
+            ])}
+          >
+            <FontAwesome5 name="archive" size={14} color={C.white} />
+          </TouchableOpacity>
         </View>
 
         {/* Badges row */}
@@ -1326,7 +2101,7 @@ export default function CaseDetailsScreen({ navigation, route }) {
           )}
           <View style={{ marginLeft: 12, flex: 1 }}>
             <Text style={sc.clientName}>{caseData.client.name}</Text>
-            <Text style={sc.clientMeta}>{caseData.client.id} · {caseData.client.since}</Text>
+            <Text style={sc.clientMeta}>{caseData.client.since}</Text>
             <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
               <Badge label={caseData.client.status} color={C.primary}  bg={C.blue50}  />
               <Badge label={caseData.client.tier}   color={C.green600} bg={C.green50} />
@@ -1334,45 +2109,39 @@ export default function CaseDetailsScreen({ navigation, route }) {
           </View>
         </View>
         <View style={sc.clientActions}>
-          <TouchableOpacity style={[sc.contactCircle, { backgroundColor: C.green50 }]}>
+          <TouchableOpacity
+            style={[sc.contactCircle, { backgroundColor: C.green50 }]}
+            onPress={() => {
+              const p = caseData.client?.phone;
+              if (!p || p === '—') return Alert.alert('Unavailable', 'No phone number on file.');
+              Linking.openURL(`tel:${p}`);
+            }}
+          >
             <FontAwesome5 name="phone" size={13} color={C.green600} />
           </TouchableOpacity>
-          <TouchableOpacity style={[sc.contactCircle, { backgroundColor: C.blue50 }]}>
+          <TouchableOpacity
+            style={[sc.contactCircle, { backgroundColor: C.blue50 }]}
+            onPress={() => {
+              const e = caseData.client?.email;
+              if (!e || e === '—') return Alert.alert('Unavailable', 'No email address on file.');
+              Linking.openURL(`mailto:${e}`);
+            }}
+          >
             <FontAwesome5 name="envelope" size={12} color={C.primary} />
           </TouchableOpacity>
-          <TouchableOpacity style={[sc.contactCircle, { backgroundColor: C.purple50 }]}>
+          <TouchableOpacity
+            style={[sc.contactCircle, { backgroundColor: C.purple50 }]}
+            onPress={() => {
+              const p = caseData.client?.phone;
+              if (!p || p === '—') return Alert.alert('Unavailable', 'No phone number on file.');
+              Linking.openURL(`sms:${p}`);
+            }}
+          >
             <FontAwesome5 name="comment" size={12} color={C.purple600} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* ── QUICK ACTIONS ─────────────────────────────────────────── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={sc.actionBar}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 10 }}
-      >
-        {[
-          { icon: 'edit',       label: 'Edit',    color: C.primary,   bg: C.blue50,   active: editMode, onPress: () => setEditMode(e => !e) },
-          { icon: 'file-alt',   label: 'Docs',    color: C.red600,    bg: C.red50,    active: false,    onPress: () => setActiveTab('documents') },
-          { icon: 'check-square', label: 'Tasks', color: C.amber600,  bg: C.amber50,  active: false,    onPress: () => setActiveTab('tasks') },
-          { icon: 'robot',      label: 'AI',      color: C.indigo600, bg: '#EEF2FF',  active: false,    onPress: () => {} },
-          { icon: 'print',      label: 'Print',   color: C.teal600,   bg: '#F0FDFA',  active: false,    onPress: () => {} },
-          { icon: 'archive',    label: 'Archive', color: C.g500,      bg: C.g100,     active: false,    onPress: () => {} },
-        ].map((q, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[sc.actionBtn, q.active && { backgroundColor: C.primary }]}
-            onPress={q.onPress}
-          >
-            <View style={[sc.actionIcon, { backgroundColor: q.active ? 'rgba(255,255,255,0.25)' : q.bg }]}>
-              <FontAwesome5 name={q.icon} size={14} color={q.active ? C.white : q.color} />
-            </View>
-            <Text style={[sc.actionLabel, { color: q.active ? C.white : q.color }]}>{q.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
 
       {/* ── TAB BAR ───────────────────────────────────────────────── */}
       <View style={sc.tabBar}>

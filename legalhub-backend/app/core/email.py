@@ -202,6 +202,81 @@ def send_invoice_email(
         raise
 
 
+def send_payment_reminder_email(
+    to_email: str,
+    client_name: str,
+    firm_name: str,
+    lawyer_name: str,
+    invoice_number: str,
+    due_date: str,
+    total_amount: float,
+    currency: str = "USD",
+):
+    """Send a payment reminder email to a client for an overdue/pending invoice."""
+    if not settings.SENDGRID_API_KEY:
+        logger.warning("SENDGRID_API_KEY not set — skipping reminder email.")
+        return
+
+    symbol = {"USD": "$", "EUR": "€", "GBP": "£", "SAR": "﷼"}.get(currency, currency + " ")
+    amount_str = f"{symbol}{total_amount:,.2f}"
+
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto; padding:24px;
+                border:1px solid #e5e7eb; border-radius:12px; background:#ffffff;">
+
+      <div style="background:#D97706; color:white; padding:18px 24px;
+                  border-radius:8px; margin-bottom:24px;">
+        <h2 style="margin:0; font-size:20px;">⏰ Payment Reminder</h2>
+        <p style="margin:4px 0 0; opacity:.85; font-size:13px;">{firm_name}</p>
+      </div>
+
+      <p style="color:#374151;">Dear <strong>{client_name}</strong>,</p>
+      <p style="color:#374151;">
+        This is a friendly reminder that the following invoice is awaiting payment:
+      </p>
+
+      <div style="background:#FFFBEB; border-left:4px solid #D97706; border-radius:8px;
+                  padding:16px 20px; margin:20px 0;">
+        <p style="margin:0 0 6px; font-size:11px; font-weight:700; color:#9CA3AF; text-transform:uppercase;">Invoice</p>
+        <p style="margin:0; font-size:18px; font-weight:800; color:#1E293B;">{invoice_number}</p>
+        <p style="margin:8px 0 0; color:#6B7280; font-size:13px;">Due Date: <strong style="color:#D97706;">{due_date}</strong></p>
+        <p style="margin:4px 0 0; font-size:22px; font-weight:900; color:#D97706;">{amount_str}</p>
+      </div>
+
+      <p style="color:#374151; font-size:13px;">
+        Please arrange payment at your earliest convenience. If you have already made this payment,
+        please disregard this reminder.
+      </p>
+      <p style="color:#374151; font-size:13px;">
+        If you have any questions, feel free to reply to this email or contact us directly.
+      </p>
+
+      <div style="margin-top:28px; padding-top:16px; border-top:1px solid #e5e7eb;">
+        <p style="margin:0; color:#374151; font-size:13px;">
+          Sent by <strong>{lawyer_name}</strong> — {firm_name}
+        </p>
+      </div>
+    </div>
+    """
+
+    message = Mail(
+        from_email=settings.FROM_EMAIL,
+        to_emails=to_email,
+        subject=f"Payment Reminder: Invoice {invoice_number} — {amount_str} due {due_date}",
+        html_content=html_content,
+    )
+    try:
+        sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
+        response = sg.send(message)
+        logger.info(f"[email] Reminder for {invoice_number} sent to {to_email} — HTTP {response.status_code}")
+        print(f"[email] Reminder for {invoice_number} sent to {to_email} — HTTP {response.status_code}", flush=True)
+    except Exception as e:
+        body = getattr(e, 'body', None)
+        logger.error(f"[email] FAILED reminder to {to_email}: {e} | body: {body}")
+        print(f"[email] FAILED reminder to {to_email}: {e} | body: {body}", flush=True)
+        raise
+
+
 def send_client_invite_email(to_email: str, client_name: str, firm_name: str, invite_token: str):
     """Send an invitation email to a client with their invite token."""
     if not settings.SENDGRID_API_KEY:
