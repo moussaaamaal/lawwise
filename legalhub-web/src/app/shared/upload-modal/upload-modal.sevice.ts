@@ -26,6 +26,10 @@ export class UploadModalService {
   description       = signal('');
   files             = signal<UploadedFile[]>([]);
 
+  // ── Real-upload callbacks (set by openForCase) ────────
+  uploadFn      = signal<((file: File) => Promise<void>) | null>(null);
+  afterUploadFn = signal<(() => void) | null>(null);
+
   // ── Lookups ──────────────────────────────────────────────
   readonly cases = [
     'Johnson vs. State Corporation',
@@ -59,6 +63,23 @@ export class UploadModalService {
     this.isUploading.set(false);
     this.isDone.set(false);
     this.isDragging.set(false);
+    this.uploadFn.set(null);
+    this.afterUploadFn.set(null);
+    this.showModal.set(true);
+  }
+
+  openForCase(caseName: string, fn: (file: File) => Promise<void>, afterFn?: () => void) {
+    this._acceptFilter.set('*');
+    this.selectedCase.set(caseName);
+    this.selectedCategory.set('');
+    this.selectedAttorney.set('');
+    this.description.set('');
+    this.files.set([]);
+    this.isUploading.set(false);
+    this.isDone.set(false);
+    this.isDragging.set(false);
+    this.uploadFn.set(fn);
+    this.afterUploadFn.set(afterFn ?? null);
     this.showModal.set(true);
   }
 
@@ -111,39 +132,56 @@ export class UploadModalService {
   }
 
   get isValid() {
-    return this.files().length > 0 && this.selectedCase() !== '';
+    return this.files().length > 0 && (this.selectedCase() !== '' || this.uploadFn() !== null);
   }
 
-  // ── Upload simulation ────────────────────────────────────
-  upload() {
+  async upload() {
     if (!this.isValid) return;
     this.isUploading.set(true);
 
-    const total = this.files().length;
-    let completed = 0;
-
-    this.files().forEach((_, idx) => {
-      const duration = 800 + Math.random() * 1200;
-      const start = Date.now();
-      const tick = () => {
-        const pct = Math.min(100, Math.round(((Date.now() - start) / duration) * 100));
-        this.files.update(arr =>
-          arr.map((f, i) => i === idx ? { ...f, progress: pct } : f)
-        );
-        if (pct < 100) {
-          requestAnimationFrame(tick);
-        } else {
-          this.files.update(arr =>
-            arr.map((f, i) => i === idx ? { ...f, done: true } : f)
-          );
-          completed++;
-          if (completed === total) {
-            this.isUploading.set(false);
-            this.isDone.set(true);
-          }
+    const fn = this.uploadFn();
+    if (fn) {
+      const files = this.files();
+      for (let i = 0; i < files.length; i++) {
+        try {
+          this.files.update(arr => arr.map((f, idx) => idx === i ? { ...f, progress: 50 } : f));
+          await fn(files[i].file);
+          this.files.update(arr => arr.map((f, idx) => idx === i ? { ...f, progress: 100, done: true } : f));
+        } catch (err) {
+          console.error('Upload failed for', files[i].name, err);
+          this.files.update(arr => arr.map((f, idx) => idx === i ? { ...f, error: true } : f));
         }
-      };
-      requestAnimationFrame(tick);
-    });
+      }
+      this.isUploading.set(false);
+      this.isDone.set(true);
+      const afterFn = this.afterUploadFn();
+      if (afterFn) afterFn();
+    } else {
+      const total = this.files().length;
+      let completed = 0;
+      this.files().forEach((_, idx) => {
+        const duration = 800 + Math.random() * 1200;
+        const start = Date.now();
+        const tick = () => {
+          const pct = Math.min(100, Math.round(((Date.now() - start) / duration) * 100));
+          this.files.update(arr =>
+            arr.map((f, i) => i === idx ? { ...f, progress: pct } : f)
+          );
+          if (pct < 100) {
+            requestAnimationFrame(tick);
+          } else {
+            this.files.update(arr =>
+              arr.map((f, i) => i === idx ? { ...f, done: true } : f)
+            );
+            completed++;
+            if (completed === total) {
+              this.isUploading.set(false);
+              this.isDone.set(true);
+            }
+          }
+        };
+        requestAnimationFrame(tick);
+      });
+    }
   }
 }

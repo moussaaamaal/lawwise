@@ -5,7 +5,6 @@ import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 
 type AuthMode = 'login' | 'signup' | 'admin';
-type Role     = 'lawyer' | 'admin';
 type AuthStep = 'credentials' | 'mfa';
 
 @Component({
@@ -27,6 +26,7 @@ export class Auth {
     this.mode.set(m);
     this.error.set('');
     this.signupStep.set(1);
+    this.signupType.set(null);
     this.authStep.set('credentials');
     this.mfaCode.set('');
   }
@@ -40,25 +40,6 @@ export class Auth {
   togglePassword(): void { this.showPassword.update(v => !v); }
   toggleConfirm():  void { this.showConfirm.update(v => !v);  }
 
-  // ── WEB-AUTH-01 — Workspace selector ──────
-  selectedWorkspace = signal('morrison');
-  workspaces = [
-    { value: 'morrison', label: 'Morrison & Associates' },
-    { value: 'williams', label: 'Williams Legal Group'  },
-    { value: 'chen',     label: 'Chen & Partners LLP'   },
-    { value: 'taylor',   label: 'Taylor Law Firm'       },
-    { value: 'lopez',    label: 'Lopez Legal Services'  },
-  ];
-  get currentWorkspaceLabel(): string {
-    return this.workspaces.find(w => w.value === this.selectedWorkspace())?.label ?? '';
-  }
-  showWorkspaceDropdown = signal(false);
-  toggleWorkspace(): void { this.showWorkspaceDropdown.update(v => !v); }
-  selectWorkspace(v: string): void {
-    this.selectedWorkspace.set(v);
-    this.showWorkspaceDropdown.set(false);
-  }
-
   // ── WEB-AUTH-02 — Email/password login ────
   email    = signal('');
   password = signal('');
@@ -69,31 +50,42 @@ export class Auth {
     });
   }
 
-  async login(): Promise<void> {
+  private _errMsg(err: unknown): string {
+    if (err && typeof err === 'object') {
+      // HttpErrorResponse: extract backend detail
+      const detail = (err as { error?: { detail?: string } }).error?.detail;
+      if (detail) return detail;
+      // Network / connection refused
+      const status = (err as { status?: number }).status;
+      if (status === 0) return 'Cannot connect to server. Is the backend running?';
+      const msg = (err as { message?: string }).message;
+      if (msg) return msg;
+    }
+    if (err instanceof Error) return err.message;
+    return 'An error occurred.';
+  }
 
-    this.router.navigate(['/dashboard']);
-    // if (!this.email() || !this.password()) { this.error.set('Please fill in all fields.'); return; }
-    // this.loading.set(true); this.error.set('');
-    // try {
-    //   const factorId = await this.authService.login(this.email(), this.password());
-    //   if (factorId) {
-    //     this.mfaFactorId.set(factorId);
-    //     this.authStep.set('mfa');
-    //   } else {
-    //     this.router.navigate(['/dashboard']);
-    //   }
-    // } catch (err: unknown) {
-    //   const msg = err instanceof Error ? err.message : 'An error occurred.';
-    //   if (msg.includes('Invalid login credentials')) {
-    //     this.error.set('Invalid email or password. Please try again.');
-    //   } else if (msg.includes('Email not confirmed')) {
-    //     this.error.set('Please confirm your email before signing in.');
-    //   } else {
-    //     this.error.set(msg);
-    //   }
-    // } finally {
-    //   this.loading.set(false);
-    // }
+  async login(): Promise<void> {
+    if (!this.email() || !this.password()) { this.error.set('Please fill in all fields.'); return; }
+    this.loading.set(true); this.error.set('');
+    try {
+      const tempToken = await this.authService.login(this.email(), this.password());
+      if (tempToken) {
+        this.mfaFactorId.set(tempToken);
+        this.authStep.set('mfa');
+      } else {
+        this.router.navigate(['/dashboard']);
+      }
+    } catch (err: unknown) {
+      const msg = this._errMsg(err);
+      if (msg.includes('Wrong password') || msg.includes('User not found')) {
+        this.error.set('Invalid email or password. Please try again.');
+      } else {
+        this.error.set(msg);
+      }
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   // ── WEB-AUTH-03 — OAuth SSO ───────────────
@@ -152,7 +144,7 @@ export class Auth {
   async sendReset(): Promise<void> {
     if (!this.resetEmail()) return;
     try {
-      await this.authService.sendPasswordReset(this.resetEmail(), this.selectedWorkspace());
+      await this.authService.sendPasswordReset(this.resetEmail());
       this.resetSent.set(true);
     } catch {
       this.resetSent.set(true); // Avoid email enumeration
@@ -182,38 +174,57 @@ export class Auth {
         this.router.navigate(['/dashboard']);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'An error occurred.';
-      this.error.set(msg.includes('Invalid login credentials') ? 'Invalid administrator credentials.' : msg);
+      const msg = this._errMsg(err);
+      this.error.set(msg.includes('Invalid login credentials') || msg.includes('Wrong password') || msg.includes('User not found')
+        ? 'Invalid administrator credentials.' : msg);
     } finally {
       this.loading.set(false);
     }
   }
 
-  // ── SIGN UP — 2-step form ─────────────────
-  signupStep     = signal<1 | 2>(1);
-  su_firstName   = signal('');
-  su_lastName    = signal('');
-  su_email       = signal('');
-  su_phone       = signal('');
-  su_password    = signal('');
-  su_confirm     = signal('');
-  su_firmName    = signal('');
-  su_firmSize    = signal('');
-  su_role        = signal<Role>('lawyer');
+  // ── SIGN UP ───────────────────────────────
+  // Step 0 → type selector; step 1 → personal info; step 2 → firm info
+  signupType          = signal<'admin' | 'lawyer' | null>(null);
+  signupStep          = signal<1 | 2>(1);
+  signupSuccess       = signal(false);
+  generatedOfficeCode = signal('');   // revealed to admin after registration
+
+  // Personal info (shared by both types)
+  su_firstName = signal('');
+  su_lastName  = signal('');
+  su_email     = signal('');
+  su_phone     = signal('');          // required for both
+  su_password  = signal('');
+  su_confirm   = signal('');
+
+  // Firm info
+  su_firmName   = signal('');
+  su_firmSize   = signal('');         // admin only
+  su_officeCode = signal('');         // lawyer only — provided by their admin
+
+  // Consents
   su_agreeTerms  = signal(false);
   su_gdprConsent = signal(false);
-  signupSuccess  = signal(false);
 
   firmSizes = ['1 (Solo)', '2–5', '6–20', '21–50', '50+'];
-  roles: { value: Role; label: string; icon: string; desc: string }[] = [
-    { value: 'lawyer', label: 'Lawyer / Attorney', icon: 'fa-solid fa-scale-balanced', desc: 'Full platform access'  },
-    { value: 'admin',  label: 'Office Admin',       icon: 'fa-solid fa-gear',           desc: 'Billing & scheduling' },
-  ];
 
+  selectSignupType(t: 'admin' | 'lawyer'): void {
+    this.signupType.set(t);
+    this.signupStep.set(1);
+    this.error.set('');
+  }
+
+  backToTypeSelector(): void {
+    this.signupType.set(null);
+    this.signupStep.set(1);
+    this.error.set('');
+  }
+
+  // Step 1 validation — phone is required for both types
   get step1Valid(): boolean {
     return !!this.su_firstName().trim() && !!this.su_lastName().trim() &&
-           !!this.su_email().trim() && this.su_password().length >= 8 &&
-           this.su_password() === this.su_confirm();
+           !!this.su_email().trim()     && !!this.su_phone().trim()    &&
+           this.su_password().length >= 8 && this.su_password() === this.su_confirm();
   }
   get passwordMismatch(): boolean {
     return !!this.su_confirm() && this.su_password() !== this.su_confirm();
@@ -230,9 +241,12 @@ export class Auth {
   get strengthWidth(): string {
     return { weak: 'w-1/3', medium: 'w-2/3', strong: 'w-full' }[this.passwordStrength];
   }
+
+  // Step 2 validation — rules differ by type
   get step2Valid(): boolean {
-    return !!this.su_firmName().trim() && !!this.su_firmSize() &&
-           this.su_agreeTerms() && this.su_gdprConsent();
+    const consents = this.su_agreeTerms() && this.su_gdprConsent();
+    if (this.signupType() === 'admin') return consents && !!this.su_firmName().trim() && !!this.su_firmSize();
+    return consents && !!this.su_officeCode().trim();
   }
 
   nextStep(): void {
@@ -241,23 +255,36 @@ export class Auth {
     this.signupStep.set(2);
   }
 
+  /** Generates a human-readable 9-char workspace code: LF-XXXX-XXXX */
+  private generateOfficeCode(): string {
+    const alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const seg = (n: number) =>
+      Array.from({ length: n }, () => alpha[Math.floor(Math.random() * alpha.length)]).join('');
+    return `LF-${seg(4)}-${seg(4)}`;
+  }
+
   async signup(): Promise<void> {
     if (!this.step2Valid) { this.error.set('Please complete all required fields and accept the terms.'); return; }
     this.loading.set(true); this.error.set('');
+    const isAdmin    = this.signupType() === 'admin';
+    const officeCode = isAdmin ? this.generateOfficeCode() : this.su_officeCode().trim().toUpperCase();
     try {
       await this.authService.signUp({
-        email:     this.su_email(),
-        password:  this.su_password(),
-        firstName: this.su_firstName(),
-        lastName:  this.su_lastName(),
-        phone:     this.su_phone() || undefined,
-        firmName:  this.su_firmName(),
-        role:      this.su_role(),
+        email:      this.su_email(),
+        password:   this.su_password(),
+        firstName:  this.su_firstName(),
+        lastName:   this.su_lastName(),
+        phone:      this.su_phone(),
+        firmName:   this.su_firmName(),
+        role:       isAdmin ? 'admin' : 'lawyer',
+        officeCode,
       });
+      if (isAdmin) this.generatedOfficeCode.set(officeCode);
       this.signupSuccess.set(true);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Sign up failed.';
-      this.error.set(msg.includes('already registered') ? 'This email is already registered. Please sign in instead.' : msg);
+      const msg = this._errMsg(err);
+      this.error.set(msg.includes('already registered') || msg.includes('Email already registered')
+        ? 'This email is already registered. Please sign in instead.' : msg);
     } finally {
       this.loading.set(false);
     }

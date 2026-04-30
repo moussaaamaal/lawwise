@@ -2,7 +2,8 @@ import { Component, signal, OnInit, inject } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Client } from '../clients-list/clients-list';
+import { Client } from '../../../models';
+import { ClientService } from '../../../services/client.service';
 import { UploadModalService } from '../../../shared/upload-modal/upload-modal.sevice';
 import { UploadModal } from '../../../shared/upload-modal/upload-modal';
 
@@ -14,30 +15,24 @@ import { UploadModal } from '../../../shared/upload-modal/upload-modal';
   templateUrl: './client-detail.html',
 })
 export class ClientDetail implements OnInit {
-
+  private clientService = inject(ClientService);
   constructor(private route: ActivatedRoute, private router: Router) {}
   upload = inject(UploadModalService);
 
   activeTab = signal('Overview');
   tabs = ['Overview', 'Cases', 'Documents', 'Payments', 'Communication', 'Notes', 'Activity Log'];
 
-  private allClients: Record<number, Client> = {
-    1: { id: 1, name: 'Sarah Johnson',       avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-7.jpg', company: 'Johnson & Associates LLC',  email: 'sarah@johnson.com',      phone: '+1 (555) 123-4567', status: 'Active',   statusBg: 'bg-green-100', statusColor: 'text-green-700', type: 'Premium Client',  typeBg: 'bg-blue-100', typeColor: 'text-blue-700', since: 'Jan 15, 2023', lastContact: 'Nov 12, 2024', totalBilled: '$48,750',  activeCases: 5, tags: ['Corporate Client', 'High Priority', 'Real Estate', 'Estate Planning', 'Litigation'],   attorney: 'Sarah Williams' },
-    2: { id: 2, name: 'Robert Martinez',     avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-1.jpg', company: 'Martinez Family Trust',     email: 'robert@martinez.com',    phone: '+1 (555) 234-5678', status: 'Active',   statusBg: 'bg-green-100', statusColor: 'text-green-700', type: 'Standard Client', typeBg: 'bg-gray-100', typeColor: 'text-gray-700', since: 'Mar 20, 2023', lastContact: 'Nov 10, 2024', totalBilled: '$22,400',  activeCases: 2, tags: ['Estate Planning', 'Trust'],                                                           attorney: 'Michael Chen' },
-    3: { id: 3, name: 'Emily Thompson',      avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', company: 'Thompson Properties LLC',   email: 'emily@thompson.com',     phone: '+1 (555) 345-6789', status: 'Active',   statusBg: 'bg-green-100', statusColor: 'text-green-700', type: 'Premium Client',  typeBg: 'bg-blue-100', typeColor: 'text-blue-700', since: 'Jun 05, 2022', lastContact: 'Nov 08, 2024', totalBilled: '$67,200',  activeCases: 4, tags: ['Real Estate', 'Corporate'],                                                           attorney: 'David Morrison' },
-    4: { id: 4, name: 'James Anderson',      avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', company: 'Anderson Industries',       email: 'james@anderson.com',     phone: '+1 (555) 456-7890', status: 'Pending',  statusBg: 'bg-amber-100', statusColor: 'text-amber-700',type: 'Standard Client', typeBg: 'bg-gray-100', typeColor: 'text-gray-700', since: 'Oct 01, 2024', lastContact: 'Oct 28, 2024', totalBilled: '$6,300',   activeCases: 1, tags: ['Employment Law'],                                                                      attorney: 'Jennifer Lopez' },
-    5: { id: 5, name: 'Linda Wilson',        avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', company: 'Wilson Medical Group',      email: 'linda@wilson.com',       phone: '+1 (555) 567-8901', status: 'Active',   statusBg: 'bg-green-100', statusColor: 'text-green-700', type: 'Premium Client',  typeBg: 'bg-blue-100', typeColor: 'text-blue-700', since: 'Feb 14, 2021', lastContact: 'Nov 11, 2024', totalBilled: '$95,800',  activeCases: 3, tags: ['Healthcare', 'Malpractice'],                                                           attorney: 'Robert Taylor' },
-    6: { id: 6, name: 'Michael Greenfield',  avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', company: 'Greenfield Industries',     email: 'michael@greenfield.com', phone: '+1 (555) 678-9012', status: 'Active',   statusBg: 'bg-green-100', statusColor: 'text-green-700', type: 'Standard Client', typeBg: 'bg-gray-100', typeColor: 'text-gray-700', since: 'Aug 22, 2023', lastContact: 'Nov 05, 2024', totalBilled: '$18,900',  activeCases: 1, tags: ['Corporate', 'Merger'],                                                                 attorney: 'Sarah Williams' },
-    7: { id: 7, name: 'Patricia Patterson',  avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-9.jpg', company: "Patterson & Sons",          email: 'patricia@patterson.com', phone: '+1 (555) 789-0123', status: 'Inactive', statusBg: 'bg-red-100',   statusColor: 'text-red-700',   type: 'Standard Client', typeBg: 'bg-gray-100', typeColor: 'text-gray-700', since: 'Apr 10, 2022', lastContact: 'Aug 15, 2024', totalBilled: '$31,500',  activeCases: 0, tags: ['Business Law', 'Contract'],                                                              attorney: 'Michael Chen' },
-    8: { id: 8, name: 'Thomas Riverside',    avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg', company: 'Riverside Development',     email: 'thomas@riverside.com',   phone: '+1 (555) 890-1234', status: 'Active',   statusBg: 'bg-green-100', statusColor: 'text-green-700', type: 'Premium Client',  typeBg: 'bg-blue-100', typeColor: 'text-blue-700', since: 'Jan 08, 2020', lastContact: 'Nov 13, 2024', totalBilled: '$142,600', activeCases: 6, tags: ['Real Estate', 'Development', 'Corporate'],                                              attorney: 'David Morrison' },
-  };
-
-  client = signal<Client | null>(null);
+  client    = signal<Client | null>(null);
+  isLoading = signal(false);
 
   ngOnInit() {
-    const id = Number(this.route.snapshot.paramMap.get('id'));
-    this.client.set(this.allClients[id] ?? this.allClients[1]);
-    this.initEditForm();
+    const id = this.route.snapshot.paramMap.get('id');
+    if (!id) return;
+    this.isLoading.set(true);
+    this.clientService.fetchClientById(id).then(client => {
+      this.client.set(client);
+      if (client) this.initEditForm();
+    }).finally(() => this.isLoading.set(false));
   }
 
   setTab(t: string) { this.activeTab.set(t); }
@@ -93,7 +88,7 @@ export class ClientDetail implements OnInit {
     { bg:'bg-purple-500', icon:'fa-solid fa-users',         title:'Meeting Completed',       desc:'In-person meeting with David Morrison',               when:'2 days ago',   tagBg:'bg-purple-100 text-purple-700',tag:'Meeting' },
     { bg:'bg-amber-500',  icon:'fa-solid fa-calendar-plus', title:'Hearing Scheduled',       desc:'Court hearing scheduled for November 16, 2024',       when:'3 days ago',   tagBg:'bg-amber-100 text-amber-700',  tag:'Calendar' },
     { bg:'bg-red-500',    icon:'fa-solid fa-briefcase',     title:'Case Created',            desc:'New case opened: Real Estate Transaction',            when:'1 week ago',   tagBg:'bg-red-100 text-red-700',      tag:'Case' },
-    { bg:'bg-indigo-500', icon:'fa-solid fa-user-plus',     title:'Client Profile Created',  desc:'Sarah Johnson added as new client by David Morrison', when:'Jan 15, 2023', tagBg:'bg-indigo-100 text-indigo-700',tag:'Client' },
+    { bg:'bg-indigo-500', icon:'fa-solid fa-user-plus',     title:'Client Profile Created',  desc:'Client added as new client',                          when:'',             tagBg:'bg-indigo-100 text-indigo-700',tag:'Client' },
   ];
 
   team = [
@@ -118,11 +113,8 @@ export class ClientDetail implements OnInit {
   clientTypes = ['Premium Client','Standard Client','VIP Client','Corporate Client'];
   statusList  = ['Active','Pending','Inactive'];
 
-  // Step 1 — Identity
   eF1 = signal({ name:'', email:'', phone:'', mobile:'', company:'', address:'', city:'', taxId:'' });
-  // Step 2 — Classification
   eF2 = signal({ type:'', status:'', attorney:'', since:'', tags:'' });
-  // Step 3 — Notes
   eF3 = signal({ notes:'', priority:'', preferredContact:'' });
 
   get editStep1Valid() {
@@ -150,11 +142,11 @@ export class ClientDetail implements OnInit {
       name:    c.name,
       email:   c.email,
       phone:   c.phone,
-      mobile:  '+1 (555) 987-6543',
+      mobile:  '',
       company: c.company,
-      address: '1234 Business Avenue, Suite 500',
-      city:    'New York, NY 10001',
-      taxId:   'XX-XXXXXXX',
+      address: c.address ?? '',
+      city:    '',
+      taxId:   '',
     });
     this.eF2.set({
       type:     c.type,
@@ -163,7 +155,7 @@ export class ClientDetail implements OnInit {
       since:    c.since,
       tags:     c.tags.join(', '),
     });
-    this.eF3.set({ notes:'', priority:'Normal', preferredContact:'Email' });
+    this.eF3.set({ notes: c.notes ?? '', priority: 'Normal', preferredContact: 'Email' });
   }
 
   openEditModal() {
@@ -185,42 +177,45 @@ export class ClientDetail implements OnInit {
     if (s > 1) this.editStep.set((s - 1) as 1|2|3);
   }
 
-  saveClient() {
+  async saveClient() {
+    const c = this.client();
+    if (!c) return;
     this.isSaving.set(true);
-    setTimeout(() => {
-      const f1 = this.eF1(); const f2 = this.eF2();
-      const typeColors: Record<string, { bg:string; color:string }> = {
-        'Premium Client':  { bg:'bg-blue-100',   color:'text-blue-700' },
-        'Standard Client': { bg:'bg-gray-100',   color:'text-gray-700' },
-        'VIP Client':      { bg:'bg-purple-100', color:'text-purple-700' },
-        'Corporate Client':{ bg:'bg-indigo-100', color:'text-indigo-700' },
-      };
-      const statusColors: Record<string, { bg:string; color:string }> = {
-        'Active':   { bg:'bg-green-100', color:'text-green-700' },
-        'Pending':  { bg:'bg-amber-100', color:'text-amber-700' },
-        'Inactive': { bg:'bg-red-100',   color:'text-red-700' },
-      };
-      const tc = typeColors[f2.type]     || { bg:'bg-gray-100',  color:'text-gray-700' };
-      const sc = statusColors[f2.status] || { bg:'bg-green-100', color:'text-green-700' };
-      this.client.update(c => c ? {
-        ...c,
-        name:        f1.name,
-        email:       f1.email,
-        phone:       f1.phone,
-        company:     f1.company,
-        type:        f2.type,
-        typeBg:      tc.bg,
-        typeColor:   tc.color,
-        status:      f2.status as 'Active' | 'Pending' | 'Inactive',
-        statusBg:    sc.bg,
-        statusColor: sc.color,
-        attorney:    f2.attorney,
-        since:       f2.since,
-        tags:        f2.tags.split(',').map(t => t.trim()).filter(Boolean),
-        lastContact: 'Just now',
-      } : c);
-      this.isSaving.set(false);
+
+    const f1 = this.eF1(); const f2 = this.eF2(); const f3 = this.eF3();
+
+    const parts      = f1.name.trim().split(' ');
+    const first_name = parts[0] || '';
+    const last_name  = parts.slice(1).join(' ') || '';
+
+    const clientTypeMap: Record<string, string> = {
+      'Corporate Client': 'CORPORATE',
+      'Standard Client':  'INDIVIDUAL',
+      'Premium Client':   'INDIVIDUAL',
+      'VIP Client':       'INDIVIDUAL',
+    };
+    const tagMap: Record<string, string> = {
+      'Active':   'ACTIVE',
+      'Inactive': 'INACTIVE',
+      'Pending':  'PENDING',
+    };
+
+    const payload: Record<string, unknown> = { first_name, last_name, email: f1.email, phone: f1.phone };
+    if (f1.company && f1.company !== '—') payload['company_name'] = f1.company;
+    const addr = [f1.address, f1.city].filter(Boolean).join(', ');
+    if (addr) payload['address'] = addr;
+    if (f2.type)   payload['client_type'] = clientTypeMap[f2.type]   ?? 'INDIVIDUAL';
+    if (f2.status) payload['tag']         = tagMap[f2.status]        ?? 'ACTIVE';
+    if (f3.notes)  payload['notes']       = f3.notes;
+
+    try {
+      const updated = await this.clientService.updateClient(c.id, payload);
+      this.client.set(updated);
       this.closeEditModal();
-    }, 800);
+    } catch {
+      // Error handling can be added here
+    } finally {
+      this.isSaving.set(false);
+    }
   }
 }

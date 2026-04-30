@@ -5,36 +5,86 @@
       <div class="relative w-96">
         <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
         <input type="text" placeholder="Search cases by name, number, client..."
-          [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
+          [ngModel]="searchQuery()" (ngModelChange)="onSearchChange($event)"
           class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
       </div>
-      <button class="ml-4 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+      <button (click)="showFilterPanel.update(v => !v)"
+              class="ml-4 px-4 py-2 text-sm rounded-lg transition-colors flex items-center"
+              [ngClass]="showFilterPanel() || hasActiveFilters
+                ? 'bg-amber-50 border border-amber-300 text-amber-700'
+                : 'text-gray-600 hover:bg-gray-100'">
         <i class="fa-solid fa-filter mr-2"></i>Advanced Filters
+        @if (hasActiveFilters) {
+          <span class="ml-2 w-2 h-2 bg-amber-500 rounded-full inline-block"></span>
+        }
       </button>
     </div>
     <div class="flex items-center space-x-3">
-      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
-        <i class="fa-solid fa-bell text-xl"></i>
-        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-      </button>
-      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
-        <i class="fa-solid fa-envelope text-xl"></i>
-        <span class="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
-      </button>
-      <div class="h-8 w-px bg-gray-300"></div>
-      <button (click)="openModal()" class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
+      <button (click)="openModal()"
+              class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
         <i class="fa-solid fa-plus"></i>
         <span class="font-medium">New Case</span>
       </button>
-      <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+      <button (click)="exportCsv()"
+              class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
         <i class="fa-solid fa-file-export text-gray-600"></i>
-        <span class="text-sm text-gray-700">Export</span>
+        <span class="text-sm text-gray-700">Export CSV</span>
       </button>
     </div>
   </div>
+
+  <!-- Advanced Filter Panel -->
+  @if (showFilterPanel()) {
+    <div class="px-8 pb-4 border-t border-gray-100 pt-3">
+      <div class="flex items-end gap-4">
+        <div class="flex-1">
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Status</label>
+          <select [ngModel]="filterStatus()" (ngModelChange)="filterStatus.set($event); onFilterChange()"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+            <option value="">All Statuses</option>
+            @for (s of statusOptions; track s) {
+              <option [value]="s">{{ statusLabel(s) }}</option>
+            }
+          </select>
+        </div>
+        <div class="flex-1">
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Type</label>
+          <select [ngModel]="filterType()" (ngModelChange)="filterType.set($event); onFilterChange()"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+            <option value="">All Types</option>
+            @for (t of typeOptions; track t) {
+              <option [value]="t">{{ typeLabel(t) }}</option>
+            }
+          </select>
+        </div>
+        <div class="flex-1">
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Priority</label>
+          <select [ngModel]="filterPriority()" (ngModelChange)="filterPriority.set($event); onFilterChange()"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+            <option value="">All Priorities</option>
+            @for (p of priorityOptions; track p) {
+              <option [value]="p">{{ priorityLabel(p) }}</option>
+            }
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          @if (hasActiveFilters) {
+            <button (click)="clearFilters()"
+                    class="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+              <i class="fa-solid fa-xmark mr-1"></i>Clear
+            </button>
+          }
+          <button (click)="showFilterPanel.set(false)"
+                  class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 </header>
 
-<main class="flex-1 overflow-y-auto bg-gray-50">
+<main class="flex-1 overflow-y-auto bg-gray-50" (click)="closeRowMenu()">
 
   <!-- PAGE HEADER -->
   <section class="px-8 pt-6 pb-4">
@@ -64,14 +114,14 @@
           <i class="fa-solid fa-clock text-amber-600 text-xl"></i>
         </div>
         <h3 class="text-2xl font-bold text-gray-900">{{ stats.pending }}</h3>
-        <p class="text-sm text-gray-600 mt-1">Pending</p>
+        <p class="text-sm text-gray-600 mt-1">Settled</p>
       </div>
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4">
           <i class="fa-solid fa-exclamation-triangle text-red-600 text-xl"></i>
         </div>
         <h3 class="text-2xl font-bold text-gray-900">{{ stats.urgent }}</h3>
-        <p class="text-sm text-gray-600 mt-1">Urgent</p>
+        <p class="text-sm text-gray-600 mt-1">Urgent / High</p>
       </div>
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mb-4">
@@ -98,120 +148,170 @@
             </button>
           }
         </div>
-        <p class="text-sm text-gray-500">{{ filteredCases.length }} cases found</p>
-      </div>
-
-      <!-- Table -->
-      <div class="overflow-x-auto">
-        <table class="w-full">
-          <thead class="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th class="px-6 py-4 text-left"><input type="checkbox" class="rounded border-gray-300"></th>
-              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Case</th>
-              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Client</th>
-              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Priority</th>
-              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Next Date</th>
-              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Attorney</th>
-              <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Files</th>
-              <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100">
-            @for (c of filteredCases; track c.id) {
-              <tr class="hover:bg-gray-50 transition-colors">
-                <td class="px-6 py-4"><input type="checkbox" class="rounded border-gray-300"></td>
-
-                <!-- Case -->
-                <td class="px-6 py-4">
-                  <div class="flex items-center space-x-3">
-                    <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                         [ngClass]="c.typeBg">
-                      <i class="fa-solid fa-briefcase text-sm" [ngClass]="c.typeColor"></i>
-                    </div>
-                    <div>
-                      <p class="text-sm font-semibold text-gray-900">{{ c.title }}</p>
-                      <p class="text-xs text-gray-500 mt-0.5">#{{ c.number }}</p>
-                      <span class="text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 inline-block" [ngClass]="[c.typeBg, c.typeColor]">{{ c.type }}</span>
-                    </div>
-                  </div>
-                </td>
-
-                <!-- Client -->
-                <td class="px-6 py-4">
-                  <p class="text-sm text-gray-900">{{ c.client }}</p>
-                </td>
-
-                <!-- Status -->
-                <td class="px-6 py-4">
-                  <span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="[c.statusBg, c.statusColor]">{{ c.status }}</span>
-                </td>
-
-                <!-- Priority -->
-                <td class="px-6 py-4">
-                  <span class="text-xs px-3 py-1 rounded-full font-medium"
-                    [ngClass]="{
-                      'bg-green-100 text-green-700': c.priority === 'Normal',
-                      'bg-amber-100 text-amber-700': c.priority === 'Medium',
-                      'bg-red-100 text-red-700':     c.priority === 'Urgent'
-                    }">{{ c.priority }}</span>
-                </td>
-
-                <!-- Next Date -->
-                <td class="px-6 py-4">
-                  <p class="text-sm font-semibold text-gray-900">{{ c.nextDate }}</p>
-                  <p class="text-xs text-gray-500">{{ c.nextDateLabel }}</p>
-                </td>
-
-                <!-- Attorney -->
-                <td class="px-6 py-4">
-                  <p class="text-sm text-gray-700">{{ c.attorney }}</p>
-                </td>
-
-                <!-- Files -->
-                <td class="px-6 py-4">
-                  <div class="flex items-center space-x-3 text-xs text-gray-500">
-                    <span><i class="fa-solid fa-file mr-1"></i>{{ c.docs }}</span>
-                    <span><i class="fa-solid fa-tasks mr-1"></i>{{ c.tasks }}</span>
-                  </div>
-                </td>
-
-                <!-- Actions -->
-                <td class="px-6 py-4 text-right">
-                  <div class="flex items-center justify-end space-x-1">
-                    <button (click)="goToDetail(c.id)"
-                      class="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors">
-                      <i class="fa-solid fa-eye"></i>
-                      <span>View Case</span>
-                    </button>
-                    <button class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                      <i class="fa-solid fa-pen-to-square"></i>
-                    </button>
-                    <button class="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
-                      <i class="fa-solid fa-ellipsis-vertical"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Pagination -->
-      <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-        <p class="text-sm text-gray-600">Showing {{ filteredCases.length }} of {{ cases.length }} cases</p>
-        <div class="flex items-center space-x-2">
-          <button class="px-3 py-2 border border-gray-300 rounded-lg text-sm opacity-50 cursor-not-allowed" disabled>
-            <i class="fa-solid fa-chevron-left"></i>
-          </button>
-          <button class="px-3 py-2 rounded-lg text-sm font-medium bg-amber-500 text-white">1</button>
-          <button class="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">2</button>
-          <button class="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
-            <i class="fa-solid fa-chevron-right"></i>
-          </button>
+        <div class="flex items-center gap-4">
+          @if (selectedCount > 0) {
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-amber-700 bg-amber-50 px-3 py-1 rounded-lg">
+                {{ selectedCount }} selected
+              </span>
+              <button (click)="clearSelection()"
+                      class="text-xs text-gray-500 hover:text-gray-700 underline">Clear</button>
+            </div>
+          }
+          <p class="text-sm text-gray-500">{{ filteredCases.length }} cases found</p>
         </div>
       </div>
+
+      <!-- Loading -->
+      @if (isLoading()) {
+        <div class="flex items-center justify-center py-20 text-gray-400">
+          <i class="fa-solid fa-spinner fa-spin text-3xl mr-3"></i>
+          <span class="text-lg">Loading cases...</span>
+        </div>
+      }
+
+      <!-- Error -->
+      @if (errorMsg()) {
+        <div class="mx-6 my-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i>{{ errorMsg() }}
+        </div>
+      }
+
+      <!-- Table -->
+      @if (!isLoading()) {
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th class="px-6 py-4 text-left">
+                  <input type="checkbox" class="rounded border-gray-300"
+                         [ngModel]="allSelected" (ngModelChange)="toggleSelectAll()">
+                </th>
+                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Case</th>
+                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Client</th>
+                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Priority</th>
+                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Next Hearing</th>
+                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Court</th>
+                <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              @for (c of filteredCases; track c.id) {
+                <tr class="hover:bg-gray-50 transition-colors"
+                    [ngClass]="isSelected(c.id) ? 'bg-amber-50' : ''">
+                  <td class="px-6 py-4">
+                    <input type="checkbox" class="rounded border-gray-300"
+                           [ngModel]="isSelected(c.id)" (ngModelChange)="toggleSelect(c.id)"
+                           (click)="$event.stopPropagation()">
+                  </td>
+
+                  <!-- Case -->
+                  <td class="px-6 py-4">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                           [ngClass]="typeBg(c.type)">
+                        <i class="fa-solid fa-briefcase text-sm" [ngClass]="typeColor(c.type)"></i>
+                      </div>
+                      <div>
+                        <p class="text-sm font-semibold text-gray-900">{{ c.title }}</p>
+                        <p class="text-xs text-gray-500 mt-0.5">#{{ c.caseNumber }}</p>
+                        <span class="text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 inline-block"
+                              [ngClass]="[typeBg(c.type), typeColor(c.type)]">{{ typeLabel(c.type) }}</span>
+                      </div>
+                    </div>
+                  </td>
+
+                  <!-- Client -->
+                  <td class="px-6 py-4">
+                    <p class="text-sm text-gray-900">{{ c.client || '—' }}</p>
+                  </td>
+
+                  <!-- Status -->
+                  <td class="px-6 py-4">
+                    <span class="text-xs px-3 py-1 rounded-full font-medium"
+                          [ngClass]="[statusBg(c.status), statusColor(c.status)]">
+                      {{ statusLabel(c.status) }}
+                    </span>
+                  </td>
+
+                  <!-- Priority -->
+                  <td class="px-6 py-4">
+                    <span class="text-xs px-3 py-1 rounded-full font-medium"
+                          [ngClass]="priorityClasses(c.priority)">
+                      {{ priorityLabel(c.priority) }}
+                    </span>
+                  </td>
+
+                  <!-- Next Hearing -->
+                  <td class="px-6 py-4">
+                    <p class="text-sm font-semibold text-gray-900">{{ formatDate(c.nextHearing) }}</p>
+                    @if (c.nextHearing) {
+                      <p class="text-xs text-gray-500">Hearing</p>
+                    }
+                  </td>
+
+                  <!-- Court -->
+                  <td class="px-6 py-4">
+                    <p class="text-sm text-gray-700">{{ c.court || '—' }}</p>
+                  </td>
+
+                  <!-- Actions -->
+                  <td class="px-6 py-4 text-right">
+                    <div class="flex items-center justify-end space-x-1">
+                      <button (click)="goToDetail(c.id)"
+                        class="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors">
+                        <i class="fa-solid fa-eye"></i>
+                        <span>View</span>
+                      </button>
+                      <!-- Context menu -->
+                      <div class="relative">
+                        <button (click)="toggleRowMenu(c.id, $event)"
+                                class="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                          <i class="fa-solid fa-ellipsis-vertical"></i>
+                        </button>
+                        @if (rowMenuOpen() === c.id) {
+                          <div class="absolute right-0 top-8 z-20 bg-white border border-gray-200 rounded-xl shadow-xl py-1 w-44"
+                               (click)="$event.stopPropagation()">
+                            <button (click)="goToDetail(c.id)"
+                                    class="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                              <i class="fa-solid fa-eye mr-3 text-gray-400 w-4"></i>View Details
+                            </button>
+                            <button (click)="goToDetail(c.id)"
+                                    class="w-full flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                              <i class="fa-solid fa-pen-to-square mr-3 text-gray-400 w-4"></i>Edit Case
+                            </button>
+                            <hr class="my-1 border-gray-100">
+                            <button (click)="deleteCase(c.id)"
+                                    class="w-full flex items-center px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                              <i class="fa-solid fa-trash mr-3 text-red-400 w-4"></i>Delete Case
+                            </button>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              }
+
+              @if (!isLoading() && filteredCases.length === 0) {
+                <tr>
+                  <td colspan="8" class="px-6 py-16 text-center text-gray-400">
+                    <i class="fa-solid fa-briefcase text-4xl mb-3 block"></i>
+                    <p class="text-base font-medium">No cases found</p>
+                    <p class="text-sm mt-1">Try adjusting your filters or create a new case.</p>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-200">
+          <p class="text-sm text-gray-500">{{ filteredCases.length }} case(s) found</p>
+        </div>
+      }
     </div>
   </section>
 
@@ -281,7 +381,6 @@
             <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
           </div>
 
-          <!-- Title -->
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">Case Title <span class="text-red-500">*</span></label>
             <div class="relative">
@@ -292,7 +391,6 @@
             </div>
           </div>
 
-          <!-- Case Number -->
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">Case Number</label>
             <div class="relative">
@@ -303,7 +401,6 @@
             </div>
           </div>
 
-          <!-- Case Type + Practice Area -->
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-semibold text-gray-800 mb-2">Case Type <span class="text-red-500">*</span></label>
@@ -331,7 +428,6 @@
             </div>
           </div>
 
-          <!-- Priority -->
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">Priority Level <span class="text-red-500">*</span></label>
             <div class="grid grid-cols-3 gap-3">
@@ -348,7 +444,6 @@
             </div>
           </div>
 
-          <!-- Description -->
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">Case Description</label>
             <textarea rows="4" placeholder="Provide a brief description of the case..."
@@ -362,21 +457,27 @@
       @if (modalStep() === 2) {
         <div class="px-6 py-5 space-y-5">
 
-          <!-- Client -->
           <div>
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-base font-bold text-gray-900">Client Association</h3>
               <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
             </div>
             <div class="relative">
-              <input type="text" placeholder="Search or enter client name..."
-                     [ngModel]="f2().clientSearch" (ngModelChange)="f2.update(v=>({...v,clientSearch:$event}))"
-                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-              <i class="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <select [ngModel]="f2().clientId" (ngModelChange)="f2.update(v=>({...v,clientId:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                <option value="">Select a client</option>
+                @for (cl of clients; track cl.id) {
+                  <option [value]="cl.id">{{ cl.name }}{{ cl.company ? ' — ' + cl.company : '' }}</option>
+                }
+              </select>
+              <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
             </div>
+            @if (clients.length === 0) {
+              <p class="text-xs text-amber-600 mt-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>No clients found. Add a client first.</p>
+            }
           </div>
 
-          <!-- Opposing -->
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-semibold text-gray-800 mb-2">Opposing Party</label>
@@ -398,7 +499,6 @@
             </div>
           </div>
 
-          <!-- Court -->
           <div class="pt-2 border-t border-gray-100">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-base font-bold text-gray-900">Court & Dates</h3>
@@ -444,11 +544,10 @@
         </div>
       }
 
-      <!-- ════ STEP 3 — Financial + Team ════ -->
+      <!-- ════ STEP 3 — Financial ════ -->
       @if (modalStep() === 3) {
         <div class="px-6 py-5 space-y-6">
 
-          <!-- Financial -->
           <div class="space-y-4">
             <div class="flex items-center justify-between">
               <h3 class="text-base font-bold text-gray-900">Financial Information</h3>
@@ -466,64 +565,17 @@
                 <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
               </div>
             </div>
-            <div class="grid grid-cols-3 gap-4">
-              <div>
-                <label class="block text-sm font-semibold text-gray-800 mb-2">Hourly Rate</label>
-                <div class="relative">
-                  <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-sm">$</span>
-                  <input type="number" placeholder="350"
-                         [ngModel]="f3().hourlyRate" (ngModelChange)="f3.update(v=>({...v,hourlyRate:$event}))"
-                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-8 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                </div>
-              </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-800 mb-2">Case Value</label>
-                <div class="relative">
-                  <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-sm">$</span>
-                  <input type="number" placeholder="50000"
-                         [ngModel]="f3().caseValue" (ngModelChange)="f3.update(v=>({...v,caseValue:$event}))"
-                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-8 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                </div>
-              </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-800 mb-2">Retainer</label>
-                <div class="relative">
-                  <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-sm">$</span>
-                  <input type="number" placeholder="5000"
-                         [ngModel]="f3().retainer" (ngModelChange)="f3.update(v=>({...v,retainer:$event}))"
-                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-8 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Estimated Case Value</label>
+              <div class="relative">
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-sm">$</span>
+                <input type="number" placeholder="50000"
+                       [ngModel]="f3().caseValue" (ngModelChange)="f3.update(v=>({...v,caseValue:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-8 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
               </div>
             </div>
           </div>
 
-          <!-- Team -->
-          <div class="space-y-4 pt-2 border-t border-gray-100">
-            <h3 class="text-base font-bold text-gray-900">Team Assignment</h3>
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Lead Attorney</label>
-              <div class="relative">
-                <select [ngModel]="f3().leadAttorney" (ngModelChange)="f3.update(v=>({...v,leadAttorney:$event}))"
-                        class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
-                  <option value="">Select attorney</option>
-                  @for (a of attorneys; track a) { <option>{{ a }}</option> }
-                </select>
-                <i class="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-800 mb-2">Tags</label>
-              <div class="relative">
-                <input type="text" placeholder="Add tags (comma separated)"
-                       [ngModel]="f3().tags" (ngModelChange)="f3.update(v=>({...v,tags:$event}))"
-                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
-                <i class="fa-solid fa-tags absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-              </div>
-            </div>
-          </div>
-
-          <!-- Settings -->
           <div class="space-y-3 pt-2 border-t border-gray-100">
             <h3 class="text-base font-bold text-gray-900">Case Settings</h3>
             @for (setting of [
@@ -562,7 +614,6 @@
           <div class="flex items-center space-x-3 bg-gray-100 rounded-full px-5 py-2 mb-8 text-sm text-gray-600">
             <i class="fa-solid fa-briefcase text-amber-600"></i>
             <span>{{ f1().caseType }}</span>
-            @if (f2().clientSearch) { <span>·</span><span>{{ f2().clientSearch }}</span> }
           </div>
           <div class="flex items-center space-x-3 w-full max-w-xs">
             <button (click)="openModal()"
@@ -582,9 +633,15 @@
     <!-- Sticky Footer -->
     @if (modalStep() < 4) {
       <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+        @if (modalStep() > 1) {
+          <button (click)="prevStep()"
+                  class="px-4 py-3.5 border border-gray-300 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-100 transition-colors">
+            <i class="fa-solid fa-arrow-left mr-2"></i>Back
+          </button>
+        }
         <button (click)="closeModal()"
                 class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
-          <i class="fa-solid fa-save mr-2"></i>Save Draft
+          Cancel
         </button>
         <button (click)="nextStep()"
                 [disabled]="(modalStep()===1 && !step1Valid) || (modalStep()===2 && !step2Valid) || isSubmitting()"
@@ -601,10 +658,6 @@
           }
         </button>
       </div>
-      <p class="text-xs text-gray-400 text-center pb-3">
-        @if (modalStep() < 3) { Required fields must be filled to continue }
-        @else { All required fields must be filled }
-      </p>
     }
 
   </div><!-- /panel -->

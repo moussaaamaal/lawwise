@@ -758,10 +758,16 @@
           }
         </button>
       </div>
-      <p class="text-xs text-gray-400 text-center pb-3">
-        @if (modalStep() < 3) { Required fields must be filled to continue }
-        @else { All required fields must be filled }
-      </p>
+      @if (submitError()) {
+        <p class="text-xs text-red-600 text-center pb-3 px-4">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ submitError() }}
+        </p>
+      } @else {
+        <p class="text-xs text-gray-400 text-center pb-3">
+          @if (modalStep() < 3) { Required fields must be filled to continue }
+          @else { All required fields must be filled }
+        </p>
+      }
     }
 
   </div><!-- /panel -->

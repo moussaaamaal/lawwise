@@ -196,39 +196,6 @@
           <p class="text-gray-500 text-sm">Sign in to access your workspace</p>
         </div>
 
-        <!-- WEB-AUTH-01 — Workspace selector -->
-        <div class="mb-5 relative">
-          <button (click)="toggleWorkspace()"
-            class="w-full flex items-center space-x-3 bg-blue-50 border border-blue-200 rounded-xl p-4 hover:bg-blue-100 transition-colors">
-            <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <i class="fa-solid fa-building text-blue-600"></i>
-            </div>
-            <div class="flex-1 text-left">
-              <p class="text-xs text-blue-600 font-medium">Signing into</p>
-              <p class="text-sm text-blue-900 font-bold">{{ currentWorkspaceLabel }}</p>
-            </div>
-            <i class="fa-solid fa-chevron-down text-blue-400 text-xs transition-transform"
-              [ngClass]="showWorkspaceDropdown() ? 'rotate-180' : ''"></i>
-          </button>
-          @if (showWorkspaceDropdown()) {
-            <div class="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden">
-              @for (ws of workspaces; track ws.value) {
-                <button (click)="selectWorkspace(ws.value)"
-                  class="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-                  [ngClass]="selectedWorkspace() === ws.value ? 'bg-amber-50' : ''">
-                  <div class="w-7 h-7 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <i class="fa-solid fa-building text-gray-500 text-xs"></i>
-                  </div>
-                  <span class="text-sm font-medium text-gray-800">{{ ws.label }}</span>
-                  @if (selectedWorkspace() === ws.value) {
-                    <i class="fa-solid fa-check text-amber-500 text-xs ml-auto"></i>
-                  }
-                </button>
-              }
-            </div>
-          }
-        </div>
-
         <!-- Error -->
         @if (error()) {
           <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
@@ -382,251 +349,400 @@
       ══════════════════════════════════ -->
       @if (mode() === 'signup' && !signupSuccess()) {
 
-        <!-- Step indicator -->
-        <div class="flex items-center mb-7">
-          <div class="flex items-center space-x-2 flex-1">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all"
-              [ngClass]="signupStep() >= 1 ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'">
-              @if (signupStep() > 1) { <i class="fa-solid fa-check text-xs"></i> } @else { 1 }
-            </div>
-            <span class="text-xs font-semibold" [ngClass]="signupStep() >= 1 ? 'text-amber-600' : 'text-gray-400'">Account</span>
-          </div>
-          <div class="flex-1 h-px mx-2" [ngClass]="signupStep() >= 2 ? 'bg-amber-400' : 'bg-gray-200'"></div>
-          <div class="flex items-center space-x-2 flex-1 justify-end">
-            <span class="text-xs font-semibold" [ngClass]="signupStep() >= 2 ? 'text-amber-600' : 'text-gray-400'">Firm</span>
-            <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all"
-              [ngClass]="signupStep() >= 2 ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'">
-              2
-            </div>
-          </div>
-        </div>
-
-        <!-- Step title -->
-        <div class="mb-6">
-          @if (signupStep() === 1) {
+        <!-- ── Step 0 — Account type selector ── -->
+        @if (signupType() === null) {
+          <div class="text-center mb-7">
             <h2 class="text-2xl font-bold text-gray-900 mb-1">Create Your Account</h2>
-            <p class="text-gray-500 text-sm">Start your 14-day free trial — no credit card required</p>
-          } @else {
-            <h2 class="text-2xl font-bold text-gray-900 mb-1">Your Firm Details</h2>
-            <p class="text-gray-500 text-sm">Tell us about your practice to customize your experience</p>
-          }
-        </div>
-
-        <!-- Error -->
-        @if (error()) {
-          <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
-            <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
-            <p class="text-sm text-red-700">{{ error() }}</p>
+            <p class="text-gray-500 text-sm">Choose the type of account that matches your role</p>
           </div>
-        }
 
-        <!-- Step 1 — Account info -->
-        @if (signupStep() === 1) {
           <div class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">First Name <span class="text-red-400">*</span></label>
-                <input type="text" [ngModel]="su_firstName()" (ngModelChange)="su_firstName.set($event)"
-                  placeholder="John"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+            <!-- Law Firm Admin card -->
+            <button (click)="selectSignupType('admin')"
+              class="w-full flex items-start space-x-4 p-5 rounded-2xl border-2 border-gray-200 hover:border-amber-400 hover:bg-amber-50 transition-all text-left group">
+              <div class="w-12 h-12 bg-amber-100 group-hover:bg-amber-200 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors">
+                <i class="fa-solid fa-building-columns text-amber-600 text-xl"></i>
               </div>
-              <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Last Name <span class="text-red-400">*</span></label>
-                <input type="text" [ngModel]="su_lastName()" (ngModelChange)="su_lastName.set($event)"
-                  placeholder="Smith"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              <div class="flex-1 min-w-0">
+                <p class="text-base font-bold text-gray-900 mb-0.5">Law Firm Administrator</p>
+                <p class="text-sm text-gray-500 leading-snug">Register your firm and manage your team. An <span class="font-semibold text-amber-700">office code</span> will be generated automatically for your lawyers to join.</p>
               </div>
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address <span class="text-red-400">*</span></label>
-              <div class="relative">
-                <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input type="email" [ngModel]="su_email()" (ngModelChange)="su_email.set($event)"
-                  placeholder="john@yourfirm.com"
-                  class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone <span class="text-gray-400 font-normal">(optional)</span></label>
-              <div class="relative">
-                <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input type="tel" [ngModel]="su_phone()" (ngModelChange)="su_phone.set($event)"
-                  placeholder="+1 (555) 000-0000"
-                  class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Password <span class="text-red-400">*</span></label>
-              <div class="relative">
-                <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input [type]="showPassword() ? 'text' : 'password'" [ngModel]="su_password()" (ngModelChange)="su_password.set($event)"
-                  placeholder="Min. 8 characters"
-                  class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-                <button type="button" (click)="togglePassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <i [ngClass]="showPassword() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
-                </button>
-              </div>
-              @if (su_password()) {
-                <div class="mt-2">
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs text-gray-500">Strength</span>
-                    <span class="text-xs font-semibold capitalize"
-                      [ngClass]="passwordStrength === 'strong' ? 'text-green-600' : passwordStrength === 'medium' ? 'text-amber-600' : 'text-red-500'">
-                      {{ passwordStrength }}
-                    </span>
-                  </div>
-                  <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                    <div class="h-full rounded-full transition-all" [ngClass]="[strengthColor, strengthWidth]"></div>
-                  </div>
-                </div>
-              }
-            </div>
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Confirm Password <span class="text-red-400">*</span></label>
-              <div class="relative">
-                <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input [type]="showConfirm() ? 'text' : 'password'" [ngModel]="su_confirm()" (ngModelChange)="su_confirm.set($event)"
-                  placeholder="Repeat your password"
-                  class="w-full pl-11 pr-12 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm transition-colors"
-                  [ngClass]="passwordMismatch ? 'border-red-400 bg-red-50' : 'border-gray-300'">
-                <button type="button" (click)="toggleConfirm()" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <i [ngClass]="showConfirm() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
-                </button>
-              </div>
-              @if (passwordMismatch) {
-                <p class="text-xs text-red-500 mt-1 flex items-center space-x-1">
-                  <i class="fa-solid fa-circle-exclamation"></i><span>Passwords do not match</span>
-                </p>
-              }
-            </div>
+              <i class="fa-solid fa-chevron-right text-gray-300 group-hover:text-amber-500 mt-1 flex-shrink-0 transition-colors"></i>
+            </button>
 
-            <button (click)="nextStep()" [disabled]="!step1Valid"
-              class="w-full py-3.5 font-bold rounded-xl transition-all text-sm flex items-center justify-center space-x-2"
-              [ngClass]="step1Valid
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
-              Continue <i class="fa-solid fa-arrow-right ml-2"></i>
+            <!-- Lawyer card -->
+            <button (click)="selectSignupType('lawyer')"
+              class="w-full flex items-start space-x-4 p-5 rounded-2xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left group">
+              <div class="w-12 h-12 bg-blue-100 group-hover:bg-blue-200 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors">
+                <i class="fa-solid fa-scale-balanced text-blue-600 text-xl"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-base font-bold text-gray-900 mb-0.5">Lawyer / Attorney</p>
+                <p class="text-sm text-gray-500 leading-snug">Join your firm's existing workspace. You'll need the <span class="font-semibold text-blue-700">office code</span> provided by your firm administrator.</p>
+              </div>
+              <i class="fa-solid fa-chevron-right text-gray-300 group-hover:text-blue-500 mt-1 flex-shrink-0 transition-colors"></i>
             </button>
           </div>
+
+          <p class="text-center text-sm text-gray-500 mt-6">
+            Already have an account?
+            <button (click)="switchTo('login')" class="text-amber-600 hover:text-amber-700 font-semibold ml-1">Sign in</button>
+          </p>
         }
 
-        <!-- Step 2 — Firm info + GDPR consent -->
-        @if (signupStep() === 2) {
-          <div class="space-y-5">
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Firm / Company Name <span class="text-red-400">*</span></label>
-              <div class="relative">
-                <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input type="text" [ngModel]="su_firmName()" (ngModelChange)="su_firmName.set($event)"
-                  placeholder="Morrison & Associates"
-                  class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-              </div>
+        <!-- ── Steps 1 & 2 — after type is chosen ── -->
+        @if (signupType() !== null) {
+
+          <!-- Step indicator -->
+          <div class="flex items-center mb-6">
+            <!-- Back to type selector -->
+            <button (click)="backToTypeSelector()" class="mr-3 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
+              <i class="fa-solid fa-arrow-left text-sm"></i>
+            </button>
+
+            <!-- Account type badge -->
+            <div class="flex items-center space-x-2 flex-shrink-0 mr-4">
+              @if (signupType() === 'admin') {
+                <span class="inline-flex items-center space-x-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1 rounded-full">
+                  <i class="fa-solid fa-building-columns text-xs"></i><span>Admin</span>
+                </span>
+              } @else {
+                <span class="inline-flex items-center space-x-1.5 bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">
+                  <i class="fa-solid fa-scale-balanced text-xs"></i><span>Lawyer</span>
+                </span>
+              }
             </div>
 
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-2">Firm Size <span class="text-red-400">*</span></label>
-              <div class="grid grid-cols-5 gap-2">
-                @for (size of firmSizes; track size) {
-                  <button (click)="su_firmSize.set(size)"
-                    class="py-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-center"
-                    [ngClass]="su_firmSize() === size
-                      ? 'border-amber-500 bg-amber-50 text-amber-700 shadow-sm'
-                      : 'border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50'">
-                    {{ size }}
-                  </button>
-                }
+            <!-- Progress dots -->
+            <div class="flex items-center space-x-2 ml-auto">
+              <div class="flex items-center space-x-1.5">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                  [ngClass]="signupStep() >= 1 ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'">
+                  @if (signupStep() > 1) { <i class="fa-solid fa-check text-xs"></i> } @else { 1 }
+                </div>
+                <span class="text-xs font-semibold hidden sm:block" [ngClass]="signupStep() >= 1 ? 'text-amber-600' : 'text-gray-400'">Account</span>
               </div>
-            </div>
-
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-2">Your Role <span class="text-red-400">*</span></label>
-              <div class="grid grid-cols-2 gap-3">
-                @for (r of roles; track r.value) {
-                  <button (click)="su_role.set(r.value)"
-                    class="flex items-start space-x-3 p-3.5 rounded-xl border-2 text-left transition-all"
-                    [ngClass]="su_role() === r.value
-                      ? 'border-amber-500 bg-amber-50 shadow-sm'
-                      : 'border-gray-200 hover:border-amber-300 hover:bg-amber-50'">
-                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors"
-                      [ngClass]="su_role() === r.value ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500'">
-                      <i [ngClass]="r.icon" class="text-sm"></i>
-                    </div>
-                    <div>
-                      <p class="text-sm font-bold text-gray-900 leading-tight">{{ r.label }}</p>
-                      <p class="text-xs text-gray-500 mt-0.5">{{ r.desc }}</p>
-                    </div>
-                  </button>
-                }
+              <div class="w-8 h-px" [ngClass]="signupStep() >= 2 ? 'bg-amber-400' : 'bg-gray-200'"></div>
+              <div class="flex items-center space-x-1.5">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                  [ngClass]="signupStep() >= 2 ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'">
+                  2
+                </div>
+                <span class="text-xs font-semibold hidden sm:block" [ngClass]="signupStep() >= 2 ? 'text-amber-600' : 'text-gray-400'">
+                  {{ signupType() === 'admin' ? 'Firm' : 'Join' }}
+                </span>
               </div>
-            </div>
-
-            <!-- Terms of service -->
-            <label class="flex items-start space-x-3 cursor-pointer p-4 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors">
-              <input type="checkbox" [ngModel]="su_agreeTerms()" (ngModelChange)="su_agreeTerms.set($event)"
-                class="w-4 h-4 mt-0.5 accent-amber-500 rounded flex-shrink-0">
-              <span class="text-sm text-gray-600">
-                I agree to the
-                <a href="#" class="text-amber-600 hover:underline font-medium">Terms of Service</a>
-                and
-                <a href="#" class="text-amber-600 hover:underline font-medium">Privacy Policy</a>
-                <span class="text-red-400 ml-1">*</span>
-              </span>
-            </label>
-
-            <!-- WEB-AUTH-07 — GDPR consent checkbox -->
-            <label class="flex items-start space-x-3 cursor-pointer p-4 bg-blue-50 rounded-xl border border-blue-200 hover:bg-blue-100 transition-colors">
-              <input type="checkbox" [ngModel]="su_gdprConsent()" (ngModelChange)="su_gdprConsent.set($event)"
-                class="w-4 h-4 mt-0.5 accent-blue-500 rounded flex-shrink-0">
-              <span class="text-sm text-gray-600">
-                <span class="font-semibold text-blue-800">GDPR Consent:</span>
-                I consent to the processing of my personal data in accordance with the
-                <a href="#" class="text-blue-600 hover:underline font-medium">EU General Data Protection Regulation</a>
-                and the
-                <a href="#" class="text-blue-600 hover:underline font-medium">Data Processing Agreement</a>.
-                <span class="text-red-400 ml-1">*</span>
-              </span>
-            </label>
-
-            <div class="flex items-center space-x-3">
-              <button (click)="signupStep.set(1)"
-                class="flex-1 py-3.5 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors text-sm">
-                <i class="fa-solid fa-arrow-left mr-2"></i>Back
-              </button>
-              <button (click)="signup()" [disabled]="!step2Valid || loading()"
-                class="flex-1 py-3.5 font-bold rounded-xl transition-all text-sm flex items-center justify-center space-x-2"
-                [ngClass]="step2Valid && !loading()
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
-                @if (loading()) {
-                  <i class="fa-solid fa-spinner fa-spin"></i><span>Creating…</span>
-                } @else {
-                  <i class="fa-solid fa-check"></i><span>Create Account</span>
-                }
-              </button>
             </div>
           </div>
-        }
 
-        <p class="text-center text-sm text-gray-500 mt-6">
-          Already have an account?
-          <button (click)="switchTo('login')" class="text-amber-600 hover:text-amber-700 font-semibold ml-1">Sign in</button>
-        </p>
+          <!-- Step title -->
+          <div class="mb-5">
+            @if (signupStep() === 1) {
+              <h2 class="text-xl font-bold text-gray-900 mb-1">Personal Information</h2>
+              <p class="text-gray-500 text-sm">Tell us who you are — all fields are required</p>
+            } @else if (signupType() === 'admin') {
+              <h2 class="text-xl font-bold text-gray-900 mb-1">Your Firm Details</h2>
+              <p class="text-gray-500 text-sm">Set up your law firm workspace</p>
+            } @else {
+              <h2 class="text-xl font-bold text-gray-900 mb-1">Join Your Firm</h2>
+              <p class="text-gray-500 text-sm">Enter the office code provided by your administrator</p>
+            }
+          </div>
+
+          <!-- Error -->
+          @if (error()) {
+            <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center space-x-2">
+              <i class="fa-solid fa-circle-exclamation text-red-500 flex-shrink-0"></i>
+              <p class="text-sm text-red-700">{{ error() }}</p>
+            </div>
+          }
+
+          <!-- ── STEP 1 — Personal info (shared) ── -->
+          @if (signupStep() === 1) {
+            <div class="space-y-4">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">First Name <span class="text-red-400">*</span></label>
+                  <input type="text" [ngModel]="su_firstName()" (ngModelChange)="su_firstName.set($event)"
+                    placeholder="John"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Last Name <span class="text-red-400">*</span></label>
+                  <input type="text" [ngModel]="su_lastName()" (ngModelChange)="su_lastName.set($event)"
+                    placeholder="Smith"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address <span class="text-red-400">*</span></label>
+                <div class="relative">
+                  <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                  <input type="email" [ngModel]="su_email()" (ngModelChange)="su_email.set($event)"
+                    placeholder="you@yourfirm.com"
+                    class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                </div>
+              </div>
+              <!-- Phone — required for both types -->
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone Number <span class="text-red-400">*</span></label>
+                <div class="relative">
+                  <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                  <input type="tel" [ngModel]="su_phone()" (ngModelChange)="su_phone.set($event)"
+                    placeholder="+1 (555) 000-0000"
+                    class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Password <span class="text-red-400">*</span></label>
+                <div class="relative">
+                  <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                  <input [type]="showPassword() ? 'text' : 'password'" [ngModel]="su_password()" (ngModelChange)="su_password.set($event)"
+                    placeholder="Min. 8 characters"
+                    class="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  <button type="button" (click)="togglePassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <i [ngClass]="showPassword() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                  </button>
+                </div>
+                @if (su_password()) {
+                  <div class="mt-2">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-xs text-gray-500">Strength</span>
+                      <span class="text-xs font-semibold capitalize"
+                        [ngClass]="passwordStrength === 'strong' ? 'text-green-600' : passwordStrength === 'medium' ? 'text-amber-600' : 'text-red-500'">
+                        {{ passwordStrength }}
+                      </span>
+                    </div>
+                    <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div class="h-full rounded-full transition-all" [ngClass]="[strengthColor, strengthWidth]"></div>
+                    </div>
+                  </div>
+                }
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Confirm Password <span class="text-red-400">*</span></label>
+                <div class="relative">
+                  <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                  <input [type]="showConfirm() ? 'text' : 'password'" [ngModel]="su_confirm()" (ngModelChange)="su_confirm.set($event)"
+                    placeholder="Repeat your password"
+                    class="w-full pl-11 pr-12 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm transition-colors"
+                    [ngClass]="passwordMismatch ? 'border-red-400 bg-red-50' : 'border-gray-300'">
+                  <button type="button" (click)="toggleConfirm()" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <i [ngClass]="showConfirm() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                  </button>
+                </div>
+                @if (passwordMismatch) {
+                  <p class="text-xs text-red-500 mt-1 flex items-center space-x-1">
+                    <i class="fa-solid fa-circle-exclamation"></i><span>Passwords do not match</span>
+                  </p>
+                }
+              </div>
+
+              <button (click)="nextStep()" [disabled]="!step1Valid"
+                class="w-full py-3.5 font-bold rounded-xl transition-all text-sm flex items-center justify-center"
+                [ngClass]="step1Valid
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+                Continue <i class="fa-solid fa-arrow-right ml-2"></i>
+              </button>
+            </div>
+          }
+
+          <!-- ── STEP 2 — Admin: firm details ── -->
+          @if (signupStep() === 2 && signupType() === 'admin') {
+            <div class="space-y-5">
+
+              <!-- Office code preview banner -->
+              <div class="flex items-start space-x-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <i class="fa-solid fa-key text-amber-500 mt-0.5 flex-shrink-0"></i>
+                <p class="text-xs text-amber-800 leading-relaxed">
+                  Once your account is created, a unique <strong>office code</strong> will be generated and shown to you.
+                  Share it with your lawyers so they can join your workspace.
+                </p>
+              </div>
+
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Firm Name <span class="text-red-400">*</span></label>
+                <div class="relative">
+                  <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                  <input type="text" [ngModel]="su_firmName()" (ngModelChange)="su_firmName.set($event)"
+                    placeholder="Morrison & Associates"
+                    class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Firm Size <span class="text-red-400">*</span></label>
+                <div class="grid grid-cols-5 gap-2">
+                  @for (size of firmSizes; track size) {
+                    <button (click)="su_firmSize.set(size)"
+                      class="py-2.5 rounded-xl border-2 text-xs font-semibold transition-all text-center"
+                      [ngClass]="su_firmSize() === size
+                        ? 'border-amber-500 bg-amber-50 text-amber-700 shadow-sm'
+                        : 'border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50'">
+                      {{ size }}
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <!-- Terms -->
+              <label class="flex items-start space-x-3 cursor-pointer p-3.5 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors">
+                <input type="checkbox" [ngModel]="su_agreeTerms()" (ngModelChange)="su_agreeTerms.set($event)"
+                  class="w-4 h-4 mt-0.5 accent-amber-500 rounded flex-shrink-0">
+                <span class="text-sm text-gray-600">
+                  I agree to the <a href="#" class="text-amber-600 hover:underline font-medium">Terms of Service</a>
+                  and <a href="#" class="text-amber-600 hover:underline font-medium">Privacy Policy</a>
+                  <span class="text-red-400 ml-1">*</span>
+                </span>
+              </label>
+
+              <!-- GDPR -->
+              <label class="flex items-start space-x-3 cursor-pointer p-3.5 bg-blue-50 rounded-xl border border-blue-200 hover:bg-blue-100 transition-colors">
+                <input type="checkbox" [ngModel]="su_gdprConsent()" (ngModelChange)="su_gdprConsent.set($event)"
+                  class="w-4 h-4 mt-0.5 accent-blue-500 rounded flex-shrink-0">
+                <span class="text-sm text-gray-600">
+                  <span class="font-semibold text-blue-800">GDPR:</span>
+                  I consent to data processing per the
+                  <a href="#" class="text-blue-600 hover:underline font-medium">Data Processing Agreement</a>
+                  <span class="text-red-400 ml-1">*</span>
+                </span>
+              </label>
+
+              <div class="flex items-center space-x-3">
+                <button (click)="signupStep.set(1)"
+                  class="flex-1 py-3.5 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors text-sm">
+                  <i class="fa-solid fa-arrow-left mr-2"></i>Back
+                </button>
+                <button (click)="signup()" [disabled]="!step2Valid || loading()"
+                  class="flex-1 py-3.5 font-bold rounded-xl transition-all text-sm flex items-center justify-center space-x-2"
+                  [ngClass]="step2Valid && !loading()
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+                  @if (loading()) {
+                    <i class="fa-solid fa-spinner fa-spin"></i><span>Creating…</span>
+                  } @else {
+                    <i class="fa-solid fa-check"></i><span>Create Firm</span>
+                  }
+                </button>
+              </div>
+            </div>
+          }
+
+          <!-- ── STEP 2 — Lawyer: join firm ── -->
+          @if (signupStep() === 2 && signupType() === 'lawyer') {
+            <div class="space-y-5">
+
+              <!-- Office code field -->
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Office Code <span class="text-red-400">*</span>
+                </label>
+                <div class="relative">
+                  <i class="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                  <input type="text" [ngModel]="su_officeCode()" (ngModelChange)="su_officeCode.set($event.toUpperCase())"
+                    placeholder="LF-XXXX-XXXX"
+                    maxlength="11"
+                    class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono tracking-widest uppercase">
+                </div>
+                <p class="text-xs text-gray-400 mt-1.5 flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-info"></i>
+                  <span>Ask your firm administrator for the office code (format: LF-XXXX-XXXX)</span>
+                </p>
+              </div>
+
+              <!-- Terms -->
+              <label class="flex items-start space-x-3 cursor-pointer p-3.5 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors">
+                <input type="checkbox" [ngModel]="su_agreeTerms()" (ngModelChange)="su_agreeTerms.set($event)"
+                  class="w-4 h-4 mt-0.5 accent-amber-500 rounded flex-shrink-0">
+                <span class="text-sm text-gray-600">
+                  I agree to the <a href="#" class="text-amber-600 hover:underline font-medium">Terms of Service</a>
+                  and <a href="#" class="text-amber-600 hover:underline font-medium">Privacy Policy</a>
+                  <span class="text-red-400 ml-1">*</span>
+                </span>
+              </label>
+
+              <!-- GDPR -->
+              <label class="flex items-start space-x-3 cursor-pointer p-3.5 bg-blue-50 rounded-xl border border-blue-200 hover:bg-blue-100 transition-colors">
+                <input type="checkbox" [ngModel]="su_gdprConsent()" (ngModelChange)="su_gdprConsent.set($event)"
+                  class="w-4 h-4 mt-0.5 accent-blue-500 rounded flex-shrink-0">
+                <span class="text-sm text-gray-600">
+                  <span class="font-semibold text-blue-800">GDPR:</span>
+                  I consent to data processing per the
+                  <a href="#" class="text-blue-600 hover:underline font-medium">Data Processing Agreement</a>
+                  <span class="text-red-400 ml-1">*</span>
+                </span>
+              </label>
+
+              <div class="flex items-center space-x-3">
+                <button (click)="signupStep.set(1)"
+                  class="flex-1 py-3.5 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors text-sm">
+                  <i class="fa-solid fa-arrow-left mr-2"></i>Back
+                </button>
+                <button (click)="signup()" [disabled]="!step2Valid || loading()"
+                  class="flex-1 py-3.5 font-bold rounded-xl transition-all text-sm flex items-center justify-center space-x-2"
+                  [ngClass]="step2Valid && !loading()
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+                  @if (loading()) {
+                    <i class="fa-solid fa-spinner fa-spin"></i><span>Joining…</span>
+                  } @else {
+                    <i class="fa-solid fa-right-to-bracket"></i><span>Join Firm</span>
+                  }
+                </button>
+              </div>
+            </div>
+          }
+
+          <p class="text-center text-sm text-gray-500 mt-6">
+            Already have an account?
+            <button (click)="switchTo('login')" class="text-amber-600 hover:text-amber-700 font-semibold ml-1">Sign in</button>
+          </p>
+
+        }<!-- /type chosen -->
 
       }<!-- /signup -->
 
-      <!-- SIGNUP SUCCESS -->
+      <!-- ══════════════════════════════════
+           SIGNUP SUCCESS
+      ══════════════════════════════════ -->
       @if (mode() === 'signup' && signupSuccess()) {
-        <div class="text-center py-8">
+        <div class="text-center py-6">
           <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5 shadow-sm">
             <i class="fa-solid fa-check text-green-500 text-4xl"></i>
           </div>
-          <h2 class="text-2xl font-bold text-gray-900 mb-2">Account Created!</h2>
-          <p class="text-gray-500 mb-2 text-sm">Welcome to LegalFlow, <strong class="text-gray-800">{{ su_firstName() }} {{ su_lastName() }}</strong></p>
-          <div class="inline-flex items-center space-x-2 bg-amber-50 border border-amber-200 rounded-xl px-5 py-2.5 mb-6">
-            <i class="fa-solid fa-building text-amber-500 text-sm"></i>
-            <span class="text-sm font-semibold text-amber-800">{{ su_firmName() }}</span>
-          </div>
-          <p class="text-xs text-gray-400 mb-6">A confirmation email has been sent to <strong>{{ su_email() }}</strong></p>
+          <h2 class="text-2xl font-bold text-gray-900 mb-1">Account Created!</h2>
+          <p class="text-gray-500 mb-5 text-sm">
+            Welcome, <strong class="text-gray-800">{{ su_firstName() }} {{ su_lastName() }}</strong>
+          </p>
+
+          <!-- Admin: show the generated office code prominently -->
+          @if (signupType() === 'admin' && generatedOfficeCode()) {
+            <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 mb-5 text-left">
+              <div class="flex items-center space-x-2 mb-2">
+                <i class="fa-solid fa-key text-amber-600"></i>
+                <p class="text-sm font-bold text-amber-800">Your Firm's Office Code</p>
+              </div>
+              <p class="text-2xl font-mono font-bold text-amber-900 tracking-widest text-center py-2">
+                {{ generatedOfficeCode() }}
+              </p>
+              <p class="text-xs text-amber-700 text-center mt-1">
+                Share this code with your lawyers so they can join <strong>{{ su_firmName() }}</strong>
+              </p>
+            </div>
+          }
+
+          <!-- Lawyer: confirm which firm they joined -->
+          @if (signupType() === 'lawyer') {
+            <div class="inline-flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-xl px-5 py-2.5 mb-5">
+              <i class="fa-solid fa-building text-blue-500 text-sm"></i>
+              <span class="text-sm font-semibold text-blue-800">{{ su_firmName() }}</span>
+            </div>
+          }
+
+          <p class="text-xs text-gray-400 mb-6">
+            A confirmation email has been sent to <strong>{{ su_email() }}</strong>
+          </p>
           <button (click)="switchTo('login')"
             class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-lg transition-all text-sm flex items-center justify-center space-x-2">
             <i class="fa-solid fa-arrow-right"></i><span>Go to Sign In</span>
@@ -694,15 +810,6 @@
           <p class="text-sm text-gray-500">We'll send a reset link to your inbox</p>
         </div>
 
-        <!-- Workspace context indicator -->
-        <div class="flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4">
-          <i class="fa-solid fa-building text-blue-500 text-xs flex-shrink-0"></i>
-          <div class="min-w-0">
-            <p class="text-xs text-blue-600 font-medium">Resetting password for workspace</p>
-            <p class="text-xs font-bold text-blue-900 truncate">{{ currentWorkspaceLabel }}</p>
-          </div>
-        </div>
-
         <div class="mb-5">
           <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
           <div class="relative">
@@ -734,8 +841,7 @@
           <p class="text-sm text-gray-500 mb-1">Check your inbox at</p>
           <p class="text-sm font-bold text-gray-800 mb-5">{{ resetEmail() }}</p>
           <p class="text-xs text-gray-400 mb-6">
-            The reset link is scoped to workspace
-            <span class="font-semibold text-gray-600">{{ currentWorkspaceLabel }}</span>
+            The reset link has been sent to your inbox.
           </p>
           <button (click)="closeForgotModal()"
             class="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-xl hover:shadow-md text-sm">

@@ -1,7 +1,10 @@
 export const environment = {
   production: false,
 
-  // ─── Supabase ──────────────────────────────────────────────
+  // ─── Backend FastAPI ───────────────────────────────────────
+  apiUrl: 'http://localhost:8000',
+
+  // ─── Supabase (conservé pour référence) ───────────────────
   supabaseUrl: 'https://ydzbgkblqnznbujzaple.supabase.co',
   supabaseAnonKey: 'sb_publishable_PB-xL2_FnqOmQWNIp7nzNQ_-sVO_Dgv',
 };

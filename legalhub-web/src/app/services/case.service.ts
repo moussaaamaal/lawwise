@@ -1,81 +1,100 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { environment } from '../environments/environment';
 import { Case } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class CaseService {
-  private casesSignal = signal<Case[]>([
-    {
-      id: '1', caseNumber: 'CASE-2024-001', title: 'Smith vs. Johnson Corporation',
-      client: 'Robert Smith', clientId: 'c1', type: 'Civil Litigation',
-      status: 'active', priority: 'high', assignedTo: 'David Morrison',
-      openDate: new Date('2024-01-15'),
-      nextHearing: new Date('2024-03-20'),
-      court: 'Superior Court of California',
-      description: 'Commercial dispute involving breach of contract and intellectual property violations.',
-      tags: ['Commercial', 'IP', 'Contract']
-    },
-    {
-      id: '2', caseNumber: 'CASE-2024-002', title: 'Estate of Williams - Probate',
-      client: 'Mary Williams', clientId: 'c2', type: 'Estate Planning',
-      status: 'active', priority: 'medium', assignedTo: 'Sarah Chen',
-      openDate: new Date('2024-02-01'),
-      nextHearing: new Date('2024-03-25'),
-      court: 'Probate Court',
-      description: 'Complex estate with multiple beneficiaries and international assets.',
-      tags: ['Probate', 'Estate', 'International']
-    },
-    {
-      id: '3', caseNumber: 'CASE-2024-003', title: 'Tech Startup - Series B Funding',
-      client: 'NexGen Technologies', clientId: 'c3', type: 'Corporate',
-      status: 'active', priority: 'high', assignedTo: 'David Morrison',
-      openDate: new Date('2024-02-10'),
-      tags: ['Corporate', 'Startup', 'Funding']
-    },
-    {
-      id: '4', caseNumber: 'CASE-2024-004', title: 'Davis Employment Dispute',
-      client: 'Jennifer Davis', clientId: 'c4', type: 'Employment Law',
-      status: 'pending', priority: 'medium', assignedTo: 'Marcus Johnson',
-      openDate: new Date('2024-02-15'),
-      nextHearing: new Date('2024-04-05'),
-      tags: ['Employment', 'HR', 'Discrimination']
-    },
-    {
-      id: '5', caseNumber: 'CASE-2024-005', title: 'Anderson Property Dispute',
-      client: 'Thomas Anderson', clientId: 'c5', type: 'Real Estate',
-      status: 'active', priority: 'low', assignedTo: 'Sarah Chen',
-      openDate: new Date('2024-01-20'),
-      tags: ['Real Estate', 'Property']
-    },
-    {
-      id: '6', caseNumber: 'CASE-2023-089', title: 'Brown Divorce Settlement',
-      client: 'Patricia Brown', clientId: 'c6', type: 'Family Law',
-      status: 'closed', priority: 'medium', assignedTo: 'David Morrison',
-      openDate: new Date('2023-09-01'),
-      tags: ['Family Law', 'Divorce']
-    }
-  ]);
+  private http = inject(HttpClient);
+  private api  = environment.apiUrl;
 
+  private casesSignal = signal<Case[]>([]);
   cases = this.casesSignal.asReadonly();
+
+  // ── Mapper réponse backend → Case local ───────────────────
+  private _map(raw: Record<string, unknown>): Case {
+    const client = raw['client'] as Record<string, string> | null;
+    return {
+      id:          String(raw['id']),
+      caseNumber:  String(raw['case_number'] ?? ''),
+      title:       String(raw['title'] ?? ''),
+      client:      client
+                     ? `${client['first_name']} ${client['last_name']}`.trim()
+                     : String(raw['client_id'] ?? ''),
+      clientId:    String(raw['client_id'] ?? ''),
+      type:        String(raw['case_type'] ?? ''),
+      status:      String(raw['status'] ?? 'NEW'),
+      priority:    String(raw['priority'] ?? 'NORMAL'),
+      assignedTo:  String(raw['lawyer_id'] ?? ''),
+      openDate:    raw['created_at'] ? new Date(String(raw['created_at'])) : new Date(),
+      nextHearing: raw['first_hearing_date']
+                     ? new Date(String(raw['first_hearing_date']))
+                     : undefined,
+      court:       String(raw['court_name'] ?? '') || undefined,
+      description: String(raw['description'] ?? '') || undefined,
+      tags:        Array.isArray(raw['tags']) ? raw['tags'] as string[] : [],
+    };
+  }
+
+  // ── Charger tous les dossiers depuis l'API ─────────────────
+  async loadCases(filters?: { status?: string; priority?: string; case_type?: string }): Promise<void> {
+    const params: Record<string, string> = {};
+    if (filters?.status)    params['status']    = filters.status;
+    if (filters?.priority)  params['priority']  = filters.priority;
+    if (filters?.case_type) params['case_type'] = filters.case_type;
+
+    const raw = await firstValueFrom(
+      this.http.get<Record<string, unknown>[]>(`${this.api}/api/cases`, { params })
+    );
+    this.casesSignal.set(raw.map(r => this._map(r)));
+  }
 
   getCaseById(id: string): Case | undefined {
     return this.casesSignal().find(c => c.id === id);
   }
 
   getActiveCases(): Case[] {
-    return this.casesSignal().filter(c => c.status === 'active');
+    const activeStatuses = new Set(['NEW', 'INVESTIGATION', 'PRE_TRIAL', 'TRIAL', 'APPEAL']);
+    return this.casesSignal().filter(c => activeStatuses.has(c.status));
   }
 
-  addCase(c: Case): void {
-    this.casesSignal.update(cases => [...cases, c]);
+  async addCase(payload: Record<string, unknown>): Promise<void> {
+    const raw = await firstValueFrom(
+      this.http.post<Record<string, unknown>>(`${this.api}/api/cases`, payload)
+    );
+    this.casesSignal.update(list => [this._map(raw), ...list]);
   }
 
-  updateCase(updated: Case): void {
-    this.casesSignal.update(cases =>
-      cases.map(c => c.id === updated.id ? updated : c)
+  async updateCase(id: string, payload: Record<string, unknown>): Promise<void> {
+    const raw = await firstValueFrom(
+      this.http.put<Record<string, unknown>>(`${this.api}/api/cases/${id}`, payload)
+    );
+    const updated = this._map(raw);
+    this.casesSignal.update(list => list.map(c => c.id === id ? updated : c));
+  }
+
+  async deleteCase(id: string): Promise<void> {
+    await firstValueFrom(this.http.delete(`${this.api}/api/cases/${id}`));
+    this.casesSignal.update(list => list.filter(c => c.id !== id));
+  }
+
+  async updateCaseStatus(id: string, status: string): Promise<void> {
+    await firstValueFrom(
+      this.http.patch(`${this.api}/api/cases/${id}/status`, { status })
     );
   }
 
-  deleteCase(id: string): void {
-    this.casesSignal.update(cases => cases.filter(c => c.id !== id));
+  async fetchCaseById(id: string): Promise<Case> {
+    const raw = await firstValueFrom(
+      this.http.get<Record<string, unknown>>(`${this.api}/api/cases/${id}`)
+    );
+    return this._map(raw);
+  }
+
+  async fetchTimeline(caseId: string): Promise<Record<string, unknown>[]> {
+    return firstValueFrom(
+      this.http.get<Record<string, unknown>[]>(`${this.api}/api/cases/${caseId}/timeline`)
+    );
   }
 }

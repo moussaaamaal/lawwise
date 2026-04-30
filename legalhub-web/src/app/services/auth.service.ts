@@ -1,178 +1,287 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { firstValueFrom } from 'rxjs';
 import { environment } from '../environments/environment';
 
 // ── AppUser — type local partagé par toute l'app ──────────────
-// Supabase User ne contient pas name/avatar/title au top-level.
-// Ces champs viennent de user_metadata (renseignés à l'inscription)
-// ou d'une table "profiles". On les mappe ici.
 export interface AppUser {
   id:       string;
   email:    string;
-  name:     string;    // user_metadata.full_name
-  title:    string;    // user_metadata.title
-  avatar:   string;    // user_metadata.avatar_url
-  role:     'lawyer' | 'paralegal' | 'admin' | 'client';  // user_metadata.role
-  firmName: string;    // user_metadata.firm_name
+  name:     string;      // full_name du backend
+  title:    string;
+  avatar:   string;      // avatar_url du backend
+  role:     'lawyer' | 'paralegal' | 'admin' | 'client';
+  firmName: string;
+  firmId:   string;
+  phone?:   string;
+  twoFaEnabled: boolean;
 }
+
+// ── Réponse de /api/auth/login ────────────────────────────────
+interface LoginResponse {
+  access_token?:  string;
+  refresh_token?: string;
+  token_type?:    string;
+  requires_2fa?:  boolean;
+  temp_token?:    string;
+  user?: BackendUser;
+}
+
+interface BackendUser {
+  id:              string;
+  email:           string;
+  full_name:       string;
+  role:            string;
+  firm_id:         string;
+  firm_name:       string | null;
+  avatar_url?:     string | null;
+  phone?:          string | null;
+  two_fa_enabled:  boolean;
+  last_login_at?:  string | null;
+}
+
+const ROLE_MAP: Record<string, AppUser['role']> = {
+  FIRM_ADMIN:  'admin',
+  SUPER_ADMIN: 'admin',
+  LAWYER:      'lawyer',
+  PARALEGAL:   'paralegal',
+  CLIENT:      'client',
+};
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private supabase: SupabaseClient;
+  private http   = inject(HttpClient);
+  private router = inject(Router);
+  private api    = environment.apiUrl;
 
   // Signal global — consommé par Sidebar, Dashboard, etc.
   currentUser = signal<AppUser | null>(null);
 
-  constructor(private router: Router) {
-    this.supabase = createClient(
-      environment.supabaseUrl,
-      environment.supabaseAnonKey
+  constructor() {
+    // Restaurer la session depuis localStorage au démarrage
+    const stored = localStorage.getItem('current_user');
+    if (stored && this._tokenValid()) {
+      try { this.currentUser.set(JSON.parse(stored)); } catch { /* ignore */ }
+    }
+  }
+
+  // ── LOGIN ─────────────────────────────────────────────────────
+  // Retourne le temp_token si 2FA requis, null sinon.
+  async login(email: string, password: string): Promise<string | null> {
+    const res = await firstValueFrom(
+      this.http.post<LoginResponse>(`${this.api}/api/auth/login`, { email, password })
     );
 
-    // ── Restaurer la session existante au démarrage ──────────
-    this.supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user) {
-        this.currentUser.set(this._mapUser(data.session.user));
-      }
-    });
-
-    // ── Écouter les changements d'état auth ──────────────────
-    this.supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        this.currentUser.set(this._mapUser(session.user));
-      } else {
-        this.currentUser.set(null);
-      }
-    });
-  }
-
-  // ── LOGIN ────────────────────────────────────────────────────
-  // Returns the MFA factor ID if the account has 2FA enrolled, otherwise null.
-  async login(email: string, password: string): Promise<string | null> {
-    const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    if (data.user) {
-      this.currentUser.set(this._mapUser(data.user));
+    if (res.requires_2fa && res.temp_token) {
+      return res.temp_token;   // passé comme "factorId" au composant
     }
-    // Check for enrolled MFA factors (TOTP or phone)
-    const { data: factorsData } = await this.supabase.auth.mfa.listFactors();
-    const activeFactor =
-      factorsData?.totp?.find(f => f.status === 'verified') ??
-      factorsData?.phone?.find(f => f.status === 'verified');
-    return activeFactor?.id ?? null;
+
+    this._storeSession(res);
+    return null;
   }
 
-  // ── WEB-AUTH-04 — MFA verification ──────────────────────────
-  async verifyMfa(factorId: string, code: string): Promise<void> {
-    const { error } = await this.supabase.auth.mfa.challengeAndVerify({ factorId, code });
-    if (error) throw error;
+  // ── MFA verification ─────────────────────────────────────────
+  // factorId = temp_token reçu lors du login
+  async verifyMfa(tempToken: string, code: string): Promise<void> {
+    const res = await firstValueFrom(
+      this.http.post<LoginResponse>(`${this.api}/api/auth/2fa/login`, {
+        temp_token: tempToken,
+        code,
+      })
+    );
+    this._storeSession(res);
   }
 
-  // ── SIGN UP ──────────────────────────────────────────────────
+  // ── SIGN UP ───────────────────────────────────────────────────
   async signUp(params: {
-    email:     string;
-    password:  string;
-    firstName: string;
-    lastName:  string;
-    phone?:    string;
-    firmName:  string;
-    role:      AppUser['role'];
+    email:       string;
+    password:    string;
+    firstName:   string;
+    lastName:    string;
+    phone?:      string;
+    firmName:    string;
+    role:        AppUser['role'];
+    officeCode?: string;
   }): Promise<void> {
-    const { data, error } = await this.supabase.auth.signUp({
-      email:    params.email,
-      password: params.password,
-      options: {
-        data: {
-          full_name:  `${params.firstName} ${params.lastName}`,
-          title:      params.role === 'lawyer' ? 'Attorney at Law' : params.role,
-          avatar_url: '',
-          role:       params.role,
-          firm_name:  params.firmName,
-          phone:      params.phone ?? '',
-        },
-        // Redirige vers /auth après confirmation email
-        emailRedirectTo: `${window.location.origin}/auth`,
-      },
-    });
-    if (error) throw error;
-    // Si email confirmation activée, data.session sera null
-    // Si désactivée, la session est créée immédiatement
-    if (data.user) {
-      this.currentUser.set(this._mapUser(data.user));
+    const fullName = `${params.firstName} ${params.lastName}`;
+
+    let res: LoginResponse;
+
+    if (params.role === 'admin') {
+      // Crée la firm + compte FIRM_ADMIN
+      res = await firstValueFrom(
+        this.http.post<LoginResponse>(`${this.api}/api/auth/register-firm`, {
+          firm_name:          params.firmName,
+          legal_entity_type:  'LLC',
+          email:              params.email,
+          password:           params.password,
+          full_name:          fullName,
+          phone:              params.phone ?? null,
+        })
+      );
+    } else {
+      // Lawyer rejoint via code bureau
+      res = await firstValueFrom(
+        this.http.post<LoginResponse>(`${this.api}/api/auth/office-code/validate`, {
+          code:      (params.officeCode ?? '').toUpperCase(),
+          email:     params.email,
+          password:  params.password,
+          full_name: fullName,
+        })
+      );
     }
+
+    this._storeSession(res);
   }
 
-  // ── WEB-AUTH-05 — Reset password (workspace-aware) ──────────
-  async sendPasswordReset(email: string, workspace?: string): Promise<void> {
-    const base = `${window.location.origin}/auth/reset`;
-    const redirectTo = workspace
-      ? `${base}?workspace=${encodeURIComponent(workspace)}`
-      : base;
-    const { error } = await this.supabase.auth.resetPasswordForEmail(email, { redirectTo });
-    if (error) throw error;
+  // ── RESET PASSWORD ────────────────────────────────────────────
+  async sendPasswordReset(email: string, _workspace?: string): Promise<void> {
+    await firstValueFrom(
+      this.http.post(`${this.api}/api/auth/forgot-password`, { email })
+    );
   }
 
-
-  // ── OAuth (Google, Microsoft) ────────────────────────────────
-  async loginWithOAuth(provider: 'google' | 'azure'): Promise<void> {
-    const { error } = await this.supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
-    });
-    if (error) throw error;
-    // Supabase redirects the browser — onAuthStateChange handles session
-  }
-
-  // ── LOGOUT ───────────────────────────────────────────────────
+  // ── LOGOUT ────────────────────────────────────────────────────
   async logout(): Promise<void> {
-    await this.supabase.auth.signOut();
-    this.currentUser.set(null);
+    try {
+      await firstValueFrom(this.http.post(`${this.api}/api/auth/logout`, {}));
+    } catch { /* ignore if token already expired */ }
+    this._clearSession();
     this.router.navigate(['/auth']);
   }
 
-  // ── HELPERS ──────────────────────────────────────────────────
+  // ── OAuth (Google, Microsoft) ─────────────────────────────────
+  // Le backend FastAPI ne gère pas OAuth directement — redirection Supabase conservée
+  async loginWithOAuth(_provider: 'google' | 'azure'): Promise<void> {
+    throw new Error('OAuth non configuré sur ce backend. Utilisez email/mot de passe.');
+  }
+
+  // ── Helpers exposés ───────────────────────────────────────────
   isLoggedIn(): boolean {
-    return this.currentUser() !== null;
+    return this.currentUser() !== null && this._tokenValid();
   }
 
   getUserRole(): string {
     return this.currentUser()?.role ?? '';
   }
 
-  /** Vérifie si une session active existe (utile dans les guards) */
-  async getSession() {
-    return this.supabase.auth.getSession();
+  /** Compatibilité avec auth.ts — vérifie la session locale */
+  async getSession(): Promise<{ data: { session: { user: AppUser } | null } }> {
+    const user = this.currentUser();
+    if (user && this._tokenValid()) {
+      return { data: { session: { user } } };
+    }
+    return { data: { session: null } };
   }
 
-  // ── Invite (edge functions) ──────────────────────────────────
-  async inviteLawyer(email: string): Promise<void> {
-    const { error } = await this.supabase.functions.invoke('invite-user', {
-      body: { email, role: 'lawyer' },
+  // ── Profile update ───────────────────────────────────────────
+
+  /** Upload un fichier image vers le backend → renvoie l'URL publique Supabase */
+  async uploadAvatar(file: File): Promise<string> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await firstValueFrom(
+      this.http.post<{ avatar_url: string }>(`${this.api}/api/auth/avatar`, form)
+    );
+    this._patchCurrentUser({ avatar: res.avatar_url });
+    return res.avatar_url;
+  }
+
+  /** Met à jour full_name, phone et/ou avatar_url sur le backend */
+  async updateProfile(data: { full_name?: string; phone?: string; avatar_url?: string | null }): Promise<void> {
+    const res = await firstValueFrom(
+      this.http.put<{ full_name: string; phone: string | null; avatar_url: string | null }>(
+        `${this.api}/api/auth/me`, data
+      )
+    );
+    this._patchCurrentUser({
+      name:   res.full_name,
+      phone:  res.phone ?? undefined,
+      avatar: res.avatar_url ?? '',
     });
-    if (error) throw error;
+  }
+
+  /** Change le mot de passe (vérifié côté backend) */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await firstValueFrom(
+      this.http.put(`${this.api}/api/auth/change-password`, {
+        current_password: currentPassword,
+        new_password:     newPassword,
+      })
+    );
+  }
+
+  /** Met à jour partiellement le currentUser signal + localStorage */
+  private _patchCurrentUser(patch: Partial<AppUser>): void {
+    const u = this.currentUser();
+    if (!u) return;
+    const updated = { ...u, ...patch };
+    this.currentUser.set(updated);
+    localStorage.setItem('current_user', JSON.stringify(updated));
+  }
+
+  // ── Invite ────────────────────────────────────────────────────
+  async inviteLawyer(email: string): Promise<void> {
+    await firstValueFrom(
+      this.http.post(`${this.api}/api/auth/invite/lawyer`, { email, full_name: email })
+    );
   }
 
   async inviteClient(email: string, phone?: string): Promise<void> {
-    const { error } = await this.supabase.functions.invoke('invite-user', {
-      body: { email, phone, role: 'client' },
-    });
-    if (error) throw error;
+    await firstValueFrom(
+      this.http.post(`${this.api}/api/auth/invite/client`, {
+        email,
+        full_name: email,
+        phone: phone ?? null,
+      })
+    );
   }
 
-  // ── Mapper Supabase User → AppUser ───────────────────────────
-  private _mapUser(user: { id: string; email?: string; user_metadata?: Record<string, unknown> }): AppUser {
-    const m = user.user_metadata ?? {};
+  // ── Session helpers ───────────────────────────────────────────
+  private _storeSession(res: LoginResponse): void {
+    if (res.access_token)  localStorage.setItem('access_token',  res.access_token);
+    if (res.refresh_token) localStorage.setItem('refresh_token', res.refresh_token);
+
+    if (res.user) {
+      const appUser = this._mapUser(res.user);
+      this.currentUser.set(appUser);
+      localStorage.setItem('current_user', JSON.stringify(appUser));
+    }
+  }
+
+  private _clearSession(): void {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('current_user');
+    this.currentUser.set(null);
+  }
+
+  private _tokenValid(): boolean {
+    const token = localStorage.getItem('access_token');
+    if (!token) return false;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.exp * 1000 > Date.now();
+    } catch {
+      return false;
+    }
+  }
+
+  private _mapUser(u: BackendUser): AppUser {
     return {
-      id:       user.id,
-      email:    user.email ?? '',
-      name:     (m['full_name']   as string) || (user.email ?? 'User'),
-      title:    (m['title']       as string) || 'Member',
-      avatar:   (m['avatar_url']  as string) || '',
-      role:     ((m['role']       as AppUser['role']) || 'lawyer'),
-      firmName: (m['firm_name']   as string) || '',
+      id:           u.id,
+      email:        u.email,
+      name:         u.full_name || u.email,
+      title:        ROLE_MAP[u.role] === 'admin' ? 'Firm Administrator'
+                  : ROLE_MAP[u.role] === 'lawyer' ? 'Attorney at Law'
+                  : u.role,
+      avatar:       u.avatar_url ?? '',
+      role:         ROLE_MAP[u.role] ?? 'lawyer',
+      firmName:     u.firm_name ?? '',
+      firmId:       u.firm_id,
+      phone:        u.phone ?? undefined,
+      twoFaEnabled: u.two_fa_enabled,
     };
   }
 }

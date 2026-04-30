@@ -1,60 +1,122 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { environment } from '../environments/environment';
 import { Client } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ClientService {
-  private clientsSignal = signal<Client[]>([
-    {
-      id: 'c1', name: 'Robert Smith', email: 'rsmith@email.com',
-      phone: '+1 (555) 234-5678', type: 'individual', status: 'active',
-      totalCases: 3, openCases: 1, joinDate: new Date('2022-03-15'),
-      avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-7.jpg',
-      address: '123 Main St, Los Angeles, CA 90001'
-    },
-    {
-      id: 'c2', name: 'Mary Williams', email: 'mary.w@email.com',
-      phone: '+1 (555) 345-6789', type: 'individual', status: 'active',
-      totalCases: 1, openCases: 1, joinDate: new Date('2024-01-20'),
-      avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg'
-    },
-    {
-      id: 'c3', name: 'NexGen Technologies', email: 'legal@nexgen.com',
-      phone: '+1 (555) 456-7890', type: 'corporate', status: 'active',
-      company: 'NexGen Technologies Inc.',
-      totalCases: 5, openCases: 2, joinDate: new Date('2021-06-01')
-    },
-    {
-      id: 'c4', name: 'Jennifer Davis', email: 'j.davis@email.com',
-      phone: '+1 (555) 567-8901', type: 'individual', status: 'active',
-      totalCases: 1, openCases: 1, joinDate: new Date('2024-02-10'),
-      avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg'
-    },
-    {
-      id: 'c5', name: 'Thomas Anderson', email: 't.anderson@email.com',
-      phone: '+1 (555) 678-9012', type: 'individual', status: 'active',
-      totalCases: 2, openCases: 1, joinDate: new Date('2023-11-05')
-    },
-    {
-      id: 'c6', name: 'Patricia Brown', email: 'p.brown@email.com',
-      phone: '+1 (555) 789-0123', type: 'individual', status: 'inactive',
-      totalCases: 1, openCases: 0, joinDate: new Date('2023-08-15'),
-      avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg'
-    }
-  ]);
+  private http = inject(HttpClient);
+  private api  = environment.apiUrl;
 
+  private clientsSignal = signal<Client[]>([]);
   clients = this.clientsSignal.asReadonly();
+
+  private statusMap: Record<string, { bg: string; color: string; label: string }> = {
+    ACTIVE:   { bg: 'bg-green-100', color: 'text-green-700', label: 'Active' },
+    INACTIVE: { bg: 'bg-red-100',   color: 'text-red-700',   label: 'Inactive' },
+    PENDING:  { bg: 'bg-amber-100', color: 'text-amber-700', label: 'Pending' },
+  };
+
+  private typeMap: Record<string, { bg: string; color: string; label: string }> = {
+    INDIVIDUAL: { bg: 'bg-gray-100', color: 'text-gray-700', label: 'Standard Client' },
+    CORPORATE:  { bg: 'bg-blue-100', color: 'text-blue-700', label: 'Corporate Client' },
+  };
+
+  private _map(raw: Record<string, unknown>): Client {
+    const firstName  = String(raw['first_name']   ?? '');
+    const lastName   = String(raw['last_name']    ?? '');
+    const name       = `${firstName} ${lastName}`.trim() || String(raw['company_name'] ?? '');
+    const tag        = (raw['tag']          as string)?.toUpperCase() ?? 'ACTIVE';
+    const clientType = (raw['client_type']  as string)?.toUpperCase() ?? 'INDIVIDUAL';
+
+    const statusInfo = this.statusMap[tag]        ?? this.statusMap['ACTIVE'];
+    const typeInfo   = this.typeMap[clientType]   ?? this.typeMap['INDIVIDUAL'];
+
+    const joinDate = raw['created_at'] ? new Date(String(raw['created_at'])) : new Date();
+    const since    = joinDate.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+
+    return {
+      id:          String(raw['id']),
+      name,
+      firstName,
+      lastName,
+      email:       String(raw['email']  ?? ''),
+      phone:       String(raw['phone']  ?? ''),
+      company:     raw['company_name'] ? String(raw['company_name']) : '—',
+      type:        typeInfo.label,
+      typeBg:      typeInfo.bg,
+      typeColor:   typeInfo.color,
+      clientType,
+      status:      statusInfo.label as 'Active' | 'Inactive' | 'Pending',
+      statusBg:    statusInfo.bg,
+      statusColor: statusInfo.color,
+      tag,
+      since,
+      lastContact: since,
+      totalBilled: '$0',
+      activeCases: Number(raw['open_cases']  ?? 0),
+      totalCases:  Number(raw['total_cases'] ?? 0),
+      openCases:   Number(raw['open_cases']  ?? 0),
+      tags:        [],
+      attorney:    '—',
+      avatar:      raw['avatar_url']
+                     ? String(raw['avatar_url'])
+                     : 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-1.jpg',
+      address:     raw['address'] ? String(raw['address']) : undefined,
+      notes:       raw['notes']   ? String(raw['notes'])   : undefined,
+      joinDate,
+    };
+  }
+
+  async loadClients(filters?: { tag?: string; search?: string }): Promise<void> {
+    const params: Record<string, string> = {};
+    if (filters?.tag)    params['tag']    = filters.tag;
+    if (filters?.search) params['search'] = filters.search;
+
+    const raw = await firstValueFrom(
+      this.http.get<Record<string, unknown>[]>(`${this.api}/api/clients`, { params })
+    );
+    this.clientsSignal.set(raw.map(r => this._map(r)));
+  }
 
   getClientById(id: string): Client | undefined {
     return this.clientsSignal().find(c => c.id === id);
   }
 
-  addClient(client: Client): void {
-    this.clientsSignal.update(clients => [...clients, client]);
+  async fetchClientById(id: string): Promise<Client | null> {
+    try {
+      const raw = await firstValueFrom(
+        this.http.get<Record<string, unknown>>(`${this.api}/api/clients/${id}`)
+      );
+      return this._map(raw);
+    } catch {
+      return null;
+    }
   }
 
-  updateClient(updated: Client): void {
-    this.clientsSignal.update(clients =>
-      clients.map(c => c.id === updated.id ? updated : c)
+  async addClient(payload: Record<string, unknown>): Promise<Client> {
+    const raw = await firstValueFrom(
+      this.http.post<Record<string, unknown>>(`${this.api}/api/clients`, payload)
     );
+    const client = this._map(raw);
+    this.clientsSignal.update(list => [client, ...list]);
+    return client;
+  }
+
+  async updateClient(id: string, payload: Record<string, unknown>): Promise<Client> {
+    const raw = await firstValueFrom(
+      this.http.put<Record<string, unknown>>(`${this.api}/api/clients/${id}`, payload)
+    );
+    const updated = this._map(raw);
+    this.clientsSignal.update(list => list.map(c => c.id === id ? updated : c));
+    return updated;
+  }
+
+  async deleteClient(id: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete(`${this.api}/api/clients/${id}`)
+    );
+    this.clientsSignal.update(list => list.filter(c => c.id !== id));
   }
 }

@@ -15,9 +15,9 @@ export interface Case {
   title: string;
   client: string;
   clientId: string;
-  type: string;
-  status: 'active' | 'pending' | 'closed' | 'on-hold';
-  priority: 'high' | 'medium' | 'low';
+  type: string;         // backend enum: CRIMINAL | CIVIL | CORPORATE | ...
+  status: string;       // backend enum: NEW | INVESTIGATION | PRE_TRIAL | TRIAL | APPEAL | SETTLED | CLOSED
+  priority: string;     // backend enum: URGENT | HIGH | MEDIUM | NORMAL | LOW
   assignedTo: string;
   openDate: Date;
   nextHearing?: Date;
@@ -30,15 +30,30 @@ export interface Case {
 export interface Client {
   id: string;
   name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   phone: string;
-  company?: string;
-  type: 'individual' | 'corporate';
-  status: 'active' | 'inactive';
-  address?: string;
+  company: string;
+  type: string;
+  typeBg: string;
+  typeColor: string;
+  clientType: string;       // raw backend: INDIVIDUAL | CORPORATE
+  status: 'Active' | 'Inactive' | 'Pending';
+  statusBg: string;
+  statusColor: string;
+  tag: string;              // raw backend: ACTIVE | INACTIVE | PENDING
+  since: string;
+  lastContact: string;
+  totalBilled: string;
+  activeCases: number;
   totalCases: number;
   openCases: number;
-  avatar?: string;
+  tags: string[];
+  attorney: string;
+  avatar: string;
+  address?: string;
+  notes?: string;
   joinDate: Date;
 }
 

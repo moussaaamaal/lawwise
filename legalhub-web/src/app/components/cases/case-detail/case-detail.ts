@@ -1,112 +1,405 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, inject, effect } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Case } from '../cases-list/cases-list';
+import { CaseService } from '../../../services/case.service';
+import { Case } from '../../../models';
+import { UploadModalService } from '../../../shared/upload-modal/upload-modal.sevice';
+import { UploadModal } from '../../../shared/upload-modal/upload-modal';
+import { DocumentService, DocEntry } from '../../../services/document.service';
+
+interface TimelineEntry {
+  action: string;
+  created_at: string;
+  performed_by?: string;
+}
+
+interface Task {
+  label: string;
+  due: string;
+  dueColor: string;
+  done: boolean;
+}
+
+interface BillingEntry {
+  date: string;
+  attorney: string;
+  desc: string;
+  hours: string;
+  rate: string;
+  amount: string;
+}
+
 
 @Component({
   selector: 'app-case-detail',
   standalone: true,
-  imports: [NgClass, FormsModule],
+  imports: [NgClass, FormsModule, UploadModal],
   templateUrl: './case-detail.html',
 })
 export class CaseDetail implements OnInit {
+  private route       = inject(ActivatedRoute);
+  private router      = inject(Router);
+  private caseService = inject(CaseService);
+  upload              = inject(UploadModalService);
+  private docService  = inject(DocumentService);
+  private _caseId     = '';
 
-  constructor(private route: ActivatedRoute, private router: Router) {}
+  activeTab = signal('Overview');
+  tabs = ['Overview', 'Timeline', 'Documents', 'Tasks', 'Billing'];
 
-  activeTab = signal('overview');
-  tabs = ['Overview','Timeline','Participants','Documents','Hearings','Tasks','Billing','AI Summary'];
+  case      = signal<Case | null>(null);
+  timeline  = signal<TimelineEntry[]>([]);
+  isLoading = signal(false);
+  errorMsg  = signal('');
 
-  case = signal<Case | null>(null);
+  documents = signal<DocEntry[]>([]);
 
-  // ── Same data as cases-list, indexed by id ───────────────
-  private allCases: Record<number, Case> = {
-    1: { id:1, title:'Johnson vs. State Corporation', number:'CIV-2024-1847', type:'Civil Litigation', typeBg:'bg-blue-100',   typeColor:'text-blue-700',   status:'Urgent',      statusBg:'bg-red-100',    statusColor:'text-red-700',    priority:'Urgent',  client:'Johnson Corporation',   attorney:'Sarah Williams',  nextDate:'Nov 16',  nextDateLabel:'Hearing',    docs:12, tasks:5, participants:3, updatedAgo:'2h ago',  description:'Complex civil litigation regarding breach of contract and IP disputes. Hearing scheduled Nov 16.' },
-    2: { id:2, title:'Martinez Family Trust',         number:'EST-2024-2156', type:'Estate Law',       typeBg:'bg-green-100',  typeColor:'text-green-700',  status:'Active',      statusBg:'bg-amber-100',  statusColor:'text-amber-700',  priority:'Normal',  client:'Martinez Family',       attorney:'Michael Chen',    nextDate:'Nov 18',  nextDateLabel:'Review',     docs:8,  tasks:3, participants:2, updatedAgo:'4h ago',  description:'Estate planning and trust management for the Martinez family.' },
-    3: { id:3, title:'Thompson Real Estate Deal',     number:'RE-2024-3421',  type:'Real Estate',      typeBg:'bg-purple-100', typeColor:'text-purple-700', status:'In Progress', statusBg:'bg-blue-100',   statusColor:'text-blue-700',   priority:'Medium',  client:'Thompson Properties',   attorney:'David Morrison',  nextDate:'Nov 20',  nextDateLabel:'Closing',    docs:15, tasks:7, participants:4, updatedAgo:'6h ago',  description:'Real estate transaction for a commercial property portfolio.' },
-    4: { id:4, title:'Anderson Employment Case',      number:'EMP-2024-1923', type:'Employment',       typeBg:'bg-indigo-100', typeColor:'text-indigo-700', status:'Active',      statusBg:'bg-green-100',  statusColor:'text-green-700',  priority:'Normal',  client:'James Anderson',        attorney:'Jennifer Lopez',  nextDate:'Nov 22',  nextDateLabel:'Mediation',  docs:9,  tasks:4, participants:2, updatedAgo:'1d ago',  description:'Employment discrimination and wrongful termination dispute.' },
-    5: { id:5, title:'Wilson Medical Malpractice',    number:'MED-2024-2847', type:'Medical Law',      typeBg:'bg-red-100',    typeColor:'text-red-700',    status:'Discovery',   statusBg:'bg-amber-100',  statusColor:'text-amber-700',  priority:'Urgent',  client:'Linda Wilson',          attorney:'Robert Taylor',   nextDate:'Nov 25',  nextDateLabel:'Filing',     docs:18, tasks:8, participants:5, updatedAgo:'2d ago',  description:'Medical malpractice case involving surgical procedure complications.' },
-    6: { id:6, title:'Greenfield Corporate Merger',   number:'CORP-2024-4128',type:'Corporate Law',    typeBg:'bg-cyan-100',   typeColor:'text-cyan-700',   status:'Negotiation', statusBg:'bg-blue-100',   statusColor:'text-blue-700',   priority:'Medium',  client:'Greenfield Industries', attorney:'Sarah Williams',  nextDate:'Nov 28',  nextDateLabel:'Meeting',    docs:24, tasks:11,participants:6, updatedAgo:'3d ago',  description:'Corporate merger and acquisition with complex regulatory requirements.' },
-    7: { id:7, title:'Patterson Business Contract',   number:'CONT-2024-5012',type:'Contract Law',     typeBg:'bg-gray-100',   typeColor:'text-gray-700',   status:'Pending',     statusBg:'bg-gray-100',   statusColor:'text-gray-700',   priority:'Normal',  client:"Patterson & Sons",      attorney:'Michael Chen',    nextDate:'Dec 02',  nextDateLabel:'Signing',    docs:5,  tasks:2, participants:2, updatedAgo:'4d ago',  description:'Commercial contract review and negotiation for service agreement.' },
-    8: { id:8, title:'Riverside Development Permit',  number:'ENV-2024-6234', type:'Real Estate',      typeBg:'bg-purple-100', typeColor:'text-purple-700', status:'Active',      statusBg:'bg-green-100',  statusColor:'text-green-700',  priority:'Medium',  client:'Riverside Development', attorney:'David Morrison',  nextDate:'Dec 05',  nextDateLabel:'Hearing',    docs:20, tasks:6, participants:4, updatedAgo:'5d ago',  description:'Environmental permit dispute for large-scale development project.' },
-  };
+  // ── Document Actions ──────────────────────────────────────
 
-  timeline = [
-    { icon:'fa-check',    iconBg:'bg-green-100',  iconColor:'text-green-600',  title:'Discovery documents reviewed and filed', time:'2h ago', desc:'All discovery materials reviewed and submitted to the court.', tag:'Document',   tagBg:'bg-blue-100',   tagColor:'text-blue-700' },
-    { icon:'fa-file',     iconBg:'bg-blue-100',   iconColor:'text-blue-600',   title:'Motion for summary judgment filed',      time:'1d ago', desc:'Legal team submitted motion with supporting documentation.',    tag:'Filing',     tagBg:'bg-purple-100', tagColor:'text-purple-700' },
-    { icon:'fa-calendar', iconBg:'bg-amber-100',  iconColor:'text-amber-600',  title:'Hearing scheduled',                      time:'3d ago', desc:'Court hearing confirmed for the upcoming date.',               tag:'Hearing',    tagBg:'bg-red-100',    tagColor:'text-red-700' },
-    { icon:'fa-users',    iconBg:'bg-purple-100', iconColor:'text-purple-600', title:'Expert witness deposition completed',    time:'5d ago', desc:'Expert provided testimony on key case matters.',               tag:'Deposition', tagBg:'bg-green-100',  tagColor:'text-green-700' },
-    { icon:'fa-envelope', iconBg:'bg-gray-100',   iconColor:'text-gray-600',   title:'Settlement offer received',              time:'1w ago', desc:'Opposing party submitted settlement offer. Client consulted.', tag:'Settlement', tagBg:'bg-amber-100',  tagColor:'text-amber-700' },
-  ];
+  previewDoc     = signal<DocEntry | null>(null);
+  downloadingDoc = signal<string | null>(null);
+  deletingDoc    = signal<DocEntry | null>(null);
 
-  documents = [
-    { name:'Motion_Summary_Judgment_v3.pdf',  size:'2.4 MB',  ago:'2h ago', iconBg:'bg-red-100',    iconColor:'text-red-600',    icon:'fa-file-pdf' },
-    { name:'Discovery_Response_Final.docx',    size:'1.8 MB',  ago:'1d ago', iconBg:'bg-blue-100',   iconColor:'text-blue-600',   icon:'fa-file-word' },
-    { name:'Financial_Damages_Analysis.xlsx',  size:'3.2 MB',  ago:'3d ago', iconBg:'bg-green-100',  iconColor:'text-green-600',  icon:'fa-file-excel' },
-    { name:'Evidence_Exhibits_Package.zip',    size:'12.5 MB', ago:'5d ago', iconBg:'bg-purple-100', iconColor:'text-purple-600', icon:'fa-file-zipper' },
-  ];
+  openPreview(doc: DocEntry)  { this.previewDoc.set(doc); }
+  closePreview()              { this.previewDoc.set(null); }
 
-  tasks = [
+  async downloadDoc(doc: DocEntry) {
+    this.downloadingDoc.set(doc.id);
+    try { await this.docService.downloadFile(doc); } catch {}
+    setTimeout(() => this.downloadingDoc.set(null), 1800);
+  }
+
+  confirmDelete(doc: DocEntry) { this.deletingDoc.set(doc); }
+  cancelDelete()               { this.deletingDoc.set(null); }
+
+  async deleteDoc() {
+    const doc = this.deletingDoc();
+    if (!doc) return;
+    try {
+      await this.docService.deleteDocument(doc.id);
+      this.documents.update(arr => arr.filter(d => d.id !== doc.id));
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+    this.deletingDoc.set(null);
+  }
+
+  async loadDocuments(caseId: string) {
+    try {
+      const docs = await this.docService.listForCase(caseId);
+      this.documents.set(docs);
+    } catch (err) {
+      console.error('Failed to load documents:', err);
+    }
+  }
+
+  openUploadModal() {
+    const c = this.case();
+    if (!c || !this._caseId) { this.upload.open(); return; }
+    this.upload.openForCase(
+      c.title,
+      async (file: File) => { await this.docService.uploadFile(file, this._caseId); },
+      () => this.loadDocuments(this._caseId),
+    );
+  }
+
+  tasks: Task[] = [
     { label:'Prepare opening statement',  due:'Due today',     dueColor:'text-red-600',   done:false },
     { label:'Review expert testimony',    due:'Due tomorrow',  dueColor:'text-amber-600', done:false },
     { label:'File response to motion',    due:'Due in 3 days', dueColor:'text-gray-600',  done:false },
-    { label:'Submit discovery documents', due:'Completed',     dueColor:'text-green-600', done:true  },
+    { label:'Submit discovery documents', due:'Completed',     dueColor:'text-green-600', done:true },
   ];
 
-  notes = [
-    { author:'Sarah Williams', time:'2 hours ago', text:'Completed review of all discovery documents. Key findings support our motion for summary judgment. Client has been briefed on the upcoming hearing.' },
-    { author:'David Morrison',  time:'1 day ago',   text:'Reviewed settlement offer from opposing counsel. Amount is below expectations but within negotiation range. Scheduled conference call with client.' },
+  billingEntries: BillingEntry[] = [
+    { date:'Nov 15, 2024', attorney:'—', desc:'Discovery document review', hours:'4.5', rate:'$350/hr', amount:'$1,575.00' },
+    { date:'Nov 14, 2024', attorney:'—', desc:'Client consultation',       hours:'2.0', rate:'$450/hr', amount:'$900.00' },
+    { date:'Nov 13, 2024', attorney:'—', desc:'Motion preparation',        hours:'6.0', rate:'$350/hr', amount:'$2,100.00' },
   ];
 
-  billingEntries = [
-    { date:'Nov 15, 2024', attorney:'Sarah Williams', desc:'Discovery document review', hours:'4.5', rate:'$350/hr', amount:'$1,575.00' },
-    { date:'Nov 14, 2024', attorney:'David Morrison',  desc:'Client consultation',       hours:'2.0', rate:'$450/hr', amount:'$900.00' },
-    { date:'Nov 13, 2024', attorney:'Sarah Williams', desc:'Motion preparation',          hours:'6.0', rate:'$350/hr', amount:'$2,100.00' },
-    { date:'Nov 12, 2024', attorney:'Sarah Williams', desc:'Legal research',              hours:'3.5', rate:'$350/hr', amount:'$1,225.00' },
-  ];
+  // ── CSS / label helpers ───────────────────────────────────
 
-  attorneys    = ['Sarah Williams','Michael Chen','David Morrison','Jennifer Lopez','Robert Taylor'];
-  caseTypes    = ['Criminal Law','Civil Law','Corporate Law','Family Law','Real Estate Law','Immigration Law','Personal Injury','Intellectual Property'];
-  statusList   = ['Active','Pending','In Progress','Discovery','Negotiation','Closed'];
-  priorityList = ['Normal','Medium','Urgent'];
+  typeBg(type: string): string {
+    const map: Record<string, string> = {
+      CRIMINAL: 'bg-red-100', CIVIL: 'bg-blue-100', CORPORATE: 'bg-cyan-100',
+      FAMILY: 'bg-pink-100', REAL_ESTATE: 'bg-purple-100', IMMIGRATION: 'bg-teal-100',
+      PERSONAL_INJURY: 'bg-orange-100', IP: 'bg-indigo-100', LABOR: 'bg-emerald-100', TAX: 'bg-yellow-100',
+    };
+    return map[type] ?? 'bg-gray-100';
+  }
 
-  ngOnInit() {
-    const id = Number(this.route.snapshot.paramMap.get('id'));
-    // ✅ Load the correct case from the map by route id
-    this.case.set(this.allCases[id] ?? this.allCases[1]);
-    this.initEditForm();
+  typeColor(type: string): string {
+    const map: Record<string, string> = {
+      CRIMINAL: 'text-red-700', CIVIL: 'text-blue-700', CORPORATE: 'text-cyan-700',
+      FAMILY: 'text-pink-700', REAL_ESTATE: 'text-purple-700', IMMIGRATION: 'text-teal-700',
+      PERSONAL_INJURY: 'text-orange-700', IP: 'text-indigo-700', LABOR: 'text-emerald-700', TAX: 'text-yellow-700',
+    };
+    return map[type] ?? 'text-gray-700';
+  }
+
+  typeLabel(type: string): string {
+    const map: Record<string, string> = {
+      CRIMINAL: 'Criminal', CIVIL: 'Civil', CORPORATE: 'Corporate',
+      FAMILY: 'Family', REAL_ESTATE: 'Real Estate', IMMIGRATION: 'Immigration',
+      PERSONAL_INJURY: 'Personal Injury', IP: 'Intellectual Property', LABOR: 'Labor', TAX: 'Tax',
+    };
+    return map[type] ?? type;
+  }
+
+  statusBg(status: string): string {
+    const map: Record<string, string> = {
+      NEW: 'bg-gray-100', INVESTIGATION: 'bg-blue-100', PRE_TRIAL: 'bg-amber-100',
+      TRIAL: 'bg-orange-100', APPEAL: 'bg-purple-100', SETTLED: 'bg-green-100', CLOSED: 'bg-gray-200',
+    };
+    return map[status] ?? 'bg-gray-100';
+  }
+
+  statusColor(status: string): string {
+    const map: Record<string, string> = {
+      NEW: 'text-gray-700', INVESTIGATION: 'text-blue-700', PRE_TRIAL: 'text-amber-700',
+      TRIAL: 'text-orange-700', APPEAL: 'text-purple-700', SETTLED: 'text-green-700', CLOSED: 'text-gray-500',
+    };
+    return map[status] ?? 'text-gray-700';
+  }
+
+  statusLabel(status: string): string {
+    const map: Record<string, string> = {
+      NEW: 'New', INVESTIGATION: 'Investigation', PRE_TRIAL: 'Pre-Trial',
+      TRIAL: 'Trial', APPEAL: 'Appeal', SETTLED: 'Settled', CLOSED: 'Closed',
+    };
+    return map[status] ?? status;
+  }
+
+  priorityClasses(priority: string): string {
+    const map: Record<string, string> = {
+      URGENT: 'bg-red-100 text-red-700', HIGH: 'bg-red-100 text-red-700',
+      MEDIUM: 'bg-amber-100 text-amber-700', NORMAL: 'bg-green-100 text-green-700', LOW: 'bg-blue-100 text-blue-700',
+    };
+    return map[priority] ?? 'bg-gray-100 text-gray-700';
+  }
+
+  priorityLabel(priority: string): string {
+    const map: Record<string, string> = { URGENT:'Urgent', HIGH:'High', MEDIUM:'Medium', NORMAL:'Normal', LOW:'Low' };
+    return map[priority] ?? priority;
+  }
+
+  formatDate(date: Date | undefined): string {
+    if (!date) return '—';
+    return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  }
+
+  formatTimelineDate(iso: string): string {
+    if (!iso) return '';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  get totalBilled(): string {
+    const total = this.billingEntries.reduce((sum, e) => {
+      const n = parseFloat(e.amount.replace(/[$,]/g, ''));
+      return sum + (isNaN(n) ? 0 : n);
+    }, 0);
+    return `$${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+  }
+
+  // ── Lifecycle ─────────────────────────────────────────────
+
+  constructor() {
+    effect(() => {
+      if (this.upload.isDone() && this._caseId) {
+        this.loadDocuments(this._caseId);
+      }
+    });
+  }
+
+  async ngOnInit() {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (!id) { this.router.navigate(['/cases']); return; }
+
+    this._caseId = id;
+    this.isLoading.set(true);
+    try {
+      const [c, tl, docs] = await Promise.all([
+        this.caseService.fetchCaseById(id),
+        this.caseService.fetchTimeline(id),
+        this.docService.listForCase(id),
+      ]);
+      this.case.set(c);
+      this.timeline.set(tl as unknown as TimelineEntry[]);
+      this.documents.set(docs);
+      this.initEditForm();
+    } catch {
+      this.errorMsg.set('Could not load case. It may not exist or the backend is unavailable.');
+    } finally {
+      this.isLoading.set(false);
+    }
   }
 
   setTab(t: string) { this.activeTab.set(t); }
   goBack()          { this.router.navigate(['/cases']); }
-  toggleTask(t: any){ t.done = !t.done; }
+  toggleTask(t: Task) { t.done = !t.done; }
 
-  // ── Edit Modal ────────────────────────────────────────────
+  // ── Favorite ──────────────────────────────────────────────
+
+  isFavorite = signal(false);
+  toggleFavorite() { this.isFavorite.update(v => !v); }
+
+  // ── Share / copy link ─────────────────────────────────────
+
+  copied = signal(false);
+  copyLink() {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 2000);
+    });
+  }
+
+  // ── Add Task Modal ────────────────────────────────────────
+
+  showAddTaskModal = signal(false);
+  isAddingTask     = signal(false);
+  taskPriority     = signal<'Low' | 'Medium' | 'High'>('Medium');
+  taskReminders    = signal({ dayBefore: false, threeHours: false, oneHour: false });
+
+  taskForm = signal({
+    title: '', category: '', dueDate: '', dueTime: '', assignTo: 'Myself', description: '',
+  });
+
+  categories = ['Court Filing', 'Document Review', 'Client Meeting', 'Research', 'Correspondence', 'Discovery', 'Other'];
+
+  get taskFormValid(): boolean {
+    return this.taskForm().title.trim().length > 0 && this.taskForm().dueDate.length > 0;
+  }
+
+  getReminder(key: string): boolean {
+    const r = this.taskReminders();
+    return !!r[key as keyof typeof r];
+  }
+
+  setReminder(key: string, value: boolean) {
+    this.taskReminders.update(r => ({ ...r, [key]: value }));
+  }
+
+  openAddTaskModal() {
+    this.taskForm.set({ title: '', category: '', dueDate: '', dueTime: '', assignTo: 'Myself', description: '' });
+    this.taskPriority.set('Medium');
+    this.taskReminders.set({ dayBefore: false, threeHours: false, oneHour: false });
+    this.showAddTaskModal.set(true);
+  }
+
+  closeAddTaskModal() { this.showAddTaskModal.set(false); }
+
+  addTask() {
+    const f = this.taskForm();
+    if (!f.title.trim()) return;
+
+    let dueLabel = 'No due date';
+    let dueColor = 'text-gray-600';
+
+    if (f.dueDate) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const due   = new Date(f.dueDate + 'T00:00:00');
+      const diff  = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+      if (diff < 0)       { dueLabel = 'Overdue';      dueColor = 'text-red-600'; }
+      else if (diff === 0){ dueLabel = 'Due today';    dueColor = 'text-red-600'; }
+      else if (diff === 1){ dueLabel = 'Due tomorrow'; dueColor = 'text-amber-600'; }
+      else                { dueLabel = `Due ${due.toLocaleDateString('en-US', { month: 'short', day: '2-digit' })}`; }
+    }
+
+    this.tasks = [
+      { label: f.title, due: dueLabel, dueColor, done: false },
+      ...this.tasks,
+    ];
+    this.closeAddTaskModal();
+  }
+
+  // ── Log Time ──────────────────────────────────────────────
+
+  showLogTimeModal = signal(false);
+  isSavingTime     = signal(false);
+  logTimeForm      = signal({ date: '', description: '', hours: '', rate: '' });
+
+  openLogTimeModal() {
+    const today = new Date().toISOString().split('T')[0];
+    this.logTimeForm.set({ date: today, description: '', hours: '', rate: '' });
+    this.showLogTimeModal.set(true);
+  }
+
+  closeLogTimeModal() { this.showLogTimeModal.set(false); }
+
+  get logTimeValid(): boolean {
+    const f = this.logTimeForm();
+    return f.date.length > 0 && f.description.trim().length > 0 && parseFloat(f.hours) > 0;
+  }
+
+  saveLogTime() {
+    if (!this.logTimeValid) return;
+    this.isSavingTime.set(true);
+    const f = this.logTimeForm();
+    const hours  = parseFloat(f.hours);
+    const rate   = parseFloat(f.rate);
+    const amount = f.rate ? `$${(hours * rate).toFixed(2)}` : '—';
+    const entry: BillingEntry = {
+      date:     new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+      attorney: '—',
+      desc:     f.description,
+      hours:    f.hours,
+      rate:     f.rate ? `$${f.rate}/hr` : '—',
+      amount,
+    };
+    this.billingEntries = [entry, ...this.billingEntries];
+    this.isSavingTime.set(false);
+    this.closeLogTimeModal();
+    this.setTab('Billing');
+  }
+
+  // ── AI Summary ────────────────────────────────────────────
+
+  showAiSummary    = signal(false);
+  aiSummaryLoading = signal(false);
+  aiSummaryText    = signal('');
+
+  generateAiSummary() {
+    const c = this.case();
+    if (!c) return;
+    this.showAiSummary.set(true);
+    this.aiSummaryLoading.set(true);
+    setTimeout(() => {
+      this.aiSummaryText.set(
+        `This is a ${this.typeLabel(c.type)} case currently in ${this.statusLabel(c.status)} status ` +
+        `with ${this.priorityLabel(c.priority)} priority.` +
+        (c.court ? ` The case is being heard at ${c.court}.` : '') +
+        (c.nextHearing ? ` Next hearing is scheduled for ${this.formatDate(c.nextHearing)}.` : '') +
+        ` There are ${this.tasks.filter(t => !t.done).length} pending tasks and ${this.documents().length} documents on file.` +
+        ` Recommendation: ensure all documentation is up to date and review relevant case precedents before the next hearing.`
+      );
+      this.aiSummaryLoading.set(false);
+    }, 1500);
+  }
+
+  // ── Edit Modal (2 steps) ──────────────────────────────────
+
   showEditModal = signal(false);
   editStep      = signal<1|2>(1);
   isSaving      = signal(false);
 
-  editF1 = signal({
-    title: '', number: '', type: '', status: '', priority: '',
-    client: '', attorney: '', description: '',
-  });
-  editF2 = signal({
-    courtName: '', courtLocation: '', judgeName: '',
-    nextDate: '', hearingTime: '', billingType: '', caseValue: '', tags: '',
-  });
+  caseTypes    = ['Criminal Law','Civil Law','Corporate Law','Family Law','Real Estate Law','Immigration Law','Personal Injury','Intellectual Property','Labor Law','Tax Law'];
+  statusList   = ['NEW','INVESTIGATION','PRE_TRIAL','TRIAL','APPEAL','SETTLED','CLOSED'];
+  priorityList = ['NORMAL','MEDIUM','HIGH','URGENT'];
+  billingTypes = ['Hourly Rate','Flat Fee','Contingency','Retainer'];
+
+  editF1 = signal({ title: '', caseType: '', status: '', priority: '', description: '' });
+  editF2 = signal({ courtName: '', courtLocation: '', judgeName: '', hearingDate: '', billingType: '', caseValue: '' });
 
   get editStep1Valid() {
     const f = this.editF1();
-    return f.title.trim().length > 0 && f.type.length > 0 && f.status.length > 0;
+    return f.title.trim().length > 0 && f.caseType.length > 0 && f.status.length > 0;
   }
-
-  get editProgressPct() { return (this.editStep() - 1) * 100; }
 
   get editStepLabels() {
     const s = this.editStep();
     return [
-      { label:'Case Details', active: s === 1, done: s > 1 },
-      { label:'Court & More', active: s === 2, done: s > 2 },
+      { label: 'Case Details', active: s === 1, done: s > 1 },
+      { label: 'Court & More', active: s === 2, done: s > 2 },
     ];
   }
 
@@ -115,32 +408,22 @@ export class CaseDetail implements OnInit {
     if (!c) return;
     this.editF1.set({
       title:       c.title,
-      number:      c.number,
-      type:        c.type,
+      caseType:    this.caseTypeLabelMap[c.type] ?? c.type,
       status:      c.status,
       priority:    c.priority,
-      client:      c.client,
-      attorney:    c.attorney,
-      description: c.description,
+      description: c.description ?? '',
     });
     this.editF2.set({
-      courtName:    'District Court 4B',
-      courtLocation:'Courtroom 4B, Downtown',
-      judgeName:    'Hon. Patricia Moore',
-      nextDate:     c.nextDate,
-      hearingTime:  '10:00',
-      billingType:  'Hourly Rate',
-      caseValue:    '2500000',
-      tags:         'civil, litigation, IP',
+      courtName:    c.court ?? '',
+      courtLocation: '',
+      judgeName:    '',
+      hearingDate:  c.nextHearing ? c.nextHearing.toISOString().split('T')[0] : '',
+      billingType:  '',
+      caseValue:    '',
     });
   }
 
-  openEditModal() {
-    this.initEditForm();
-    this.editStep.set(1);
-    this.showEditModal.set(true);
-  }
-
+  openEditModal()  { this.initEditForm(); this.editStep.set(1); this.showEditModal.set(true); }
   closeEditModal() { this.showEditModal.set(false); }
 
   editNextStep() {
@@ -148,59 +431,59 @@ export class CaseDetail implements OnInit {
     else this.saveCase();
   }
 
-  editPrevStep() {
-    if (this.editStep() === 2) this.editStep.set(1);
-  }
+  editPrevStep() { if (this.editStep() === 2) this.editStep.set(1); }
 
-  saveCase() {
+  private readonly caseTypeMap: Record<string, string> = {
+    'Criminal Law': 'CRIMINAL', 'Civil Law': 'CIVIL', 'Corporate Law': 'CORPORATE',
+    'Family Law': 'FAMILY', 'Real Estate Law': 'REAL_ESTATE', 'Immigration Law': 'IMMIGRATION',
+    'Personal Injury': 'PERSONAL_INJURY', 'Intellectual Property': 'IP',
+    'Labor Law': 'LABOR', 'Tax Law': 'TAX',
+  };
+
+  private readonly caseTypeLabelMap: Record<string, string> = {
+    CRIMINAL: 'Criminal Law', CIVIL: 'Civil Law', CORPORATE: 'Corporate Law',
+    FAMILY: 'Family Law', REAL_ESTATE: 'Real Estate Law', IMMIGRATION: 'Immigration Law',
+    PERSONAL_INJURY: 'Personal Injury', IP: 'Intellectual Property',
+    LABOR: 'Labor Law', TAX: 'Tax Law',
+  };
+
+  private readonly billingTypeMap: Record<string, string> = {
+    'Hourly Rate': 'HOURLY', 'Flat Fee': 'FLAT_FEE', 'Contingency': 'CONTINGENCY', 'Retainer': 'RETAINER',
+  };
+
+  async saveCase() {
+    const c = this.case();
+    if (!c) return;
     this.isSaving.set(true);
-    setTimeout(() => {
-      const f1 = this.editF1();
-      const typeColors: Record<string, { bg:string; color:string }> = {
-        'Civil Law':            { bg:'bg-blue-100',   color:'text-blue-700' },
-        'Corporate Law':        { bg:'bg-cyan-100',   color:'text-cyan-700' },
-        'Criminal Law':         { bg:'bg-red-100',    color:'text-red-700' },
-        'Family Law':           { bg:'bg-pink-100',   color:'text-pink-700' },
-        'Real Estate Law':      { bg:'bg-purple-100', color:'text-purple-700' },
-        'Personal Injury':      { bg:'bg-orange-100', color:'text-orange-700' },
-        'Immigration Law':      { bg:'bg-teal-100',   color:'text-teal-700' },
-        'Intellectual Property':{ bg:'bg-indigo-100', color:'text-indigo-700' },
-        'Civil Litigation':     { bg:'bg-blue-100',   color:'text-blue-700' },
-        'Estate Law':           { bg:'bg-green-100',  color:'text-green-700' },
-        'Real Estate':          { bg:'bg-purple-100', color:'text-purple-700' },
-        'Employment':           { bg:'bg-indigo-100', color:'text-indigo-700' },
-        'Medical Law':          { bg:'bg-red-100',    color:'text-red-700' },
-        'Contract Law':         { bg:'bg-gray-100',   color:'text-gray-700' },
+    try {
+      const f1 = this.editF1(); const f2 = this.editF2();
+      const payload: Record<string, unknown> = {
+        title:              f1.title,
+        case_type:          this.caseTypeMap[f1.caseType] ?? f1.caseType,
+        priority:           f1.priority,
+        description:        f1.description || undefined,
+        court_name:         f2.courtName || undefined,
+        court_location:     f2.courtLocation || undefined,
+        judge_name:         f2.judgeName || undefined,
+        first_hearing_date: f2.hearingDate || undefined,
+        billing_type:       f2.billingType ? (this.billingTypeMap[f2.billingType] ?? undefined) : undefined,
+        estimated_value:    f2.caseValue ? Number(f2.caseValue) : undefined,
       };
-      const statusColors: Record<string, { bg:string; color:string }> = {
-        'Active':      { bg:'bg-green-100',  color:'text-green-700' },
-        'Pending':     { bg:'bg-gray-100',   color:'text-gray-700' },
-        'In Progress': { bg:'bg-blue-100',   color:'text-blue-700' },
-        'Discovery':   { bg:'bg-amber-100',  color:'text-amber-700' },
-        'Negotiation': { bg:'bg-blue-100',   color:'text-blue-700' },
-        'Urgent':      { bg:'bg-red-100',    color:'text-red-700' },
-        'Closed':      { bg:'bg-gray-200',   color:'text-gray-600' },
-      };
-      const tc = typeColors[f1.type]     || { bg:'bg-gray-100',  color:'text-gray-700' };
-      const sc = statusColors[f1.status] || { bg:'bg-green-100', color:'text-green-700' };
-      this.case.update(c => c ? {
-        ...c,
-        title:       f1.title,
-        number:      f1.number,
-        type:        f1.type,
-        typeBg:      tc.bg,
-        typeColor:   tc.color,
-        status:      f1.status,
-        statusBg:    sc.bg,
-        statusColor: sc.color,
-        priority:    f1.priority as 'Normal'|'Medium'|'Urgent',
-        client:      f1.client,
-        attorney:    f1.attorney,
-        description: f1.description,
-        updatedAgo:  'Just now',
-      } : c);
-      this.isSaving.set(false);
+      Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+
+      await this.caseService.updateCase(c.id, payload);
+
+      if (f1.status !== c.status) {
+        await this.caseService.updateCaseStatus(c.id, f1.status);
+      }
+
+      const updated = await this.caseService.fetchCaseById(c.id);
+      this.case.set(updated);
       this.closeEditModal();
-    }, 800);
+    } catch (err) {
+      console.error('Failed to save case:', err);
+    } finally {
+      this.isSaving.set(false);
+    }
   }
 }

@@ -7,7 +7,7 @@ export const roleGuard = (allowedRole: string): CanActivateFn => async () => {
   const auth = inject(AuthService);
   const router = inject(Router);
   const { data } = await auth.getSession();
-  const role = data.session?.user?.user_metadata?.['role'];
+  const role = data.session?.user?.role;
   if (role === allowedRole) return true;
   router.navigate(['/unauthorized']);
   return false;
