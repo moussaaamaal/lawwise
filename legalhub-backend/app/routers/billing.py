@@ -157,6 +157,13 @@ async def create_invoice(body: CreateInvoiceRequest, current_user=Depends(get_la
             "total":       item.quantity * item.unit_price,
         }).execute()
 
+    supabase.table("notification").insert({
+        "user_id": current_user["id"],
+        "type":    "INVOICE_DUE",
+        "title":   "Invoice Created",
+        "message": f"{invoice_number} — {body.currency} {total:,.2f} due {body.due_date}.",
+    }).execute()
+
     return invoice.data[0]
 
 # ─── GET /api/invoices/:id ──────────────────────────────
@@ -290,6 +297,13 @@ async def send_invoice(invoice_id: str, current_user=Depends(get_lawyer)):
     supabase.table("invoice").update({
         "status": InvoiceStatus.PENDING
     }).eq("id", invoice_id).execute()
+
+    supabase.table("notification").insert({
+        "user_id": current_user["id"],
+        "type":    "INVOICE_DUE",
+        "title":   "Invoice Sent",
+        "message": f"{inv['invoice_number']} sent to {client_name} — due {inv.get('due_date', '')}.",
+    }).execute()
 
     return {"message": f"Invoice sent to {client_email}"}
 

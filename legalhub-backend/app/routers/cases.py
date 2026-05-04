@@ -99,6 +99,13 @@ async def create_case(body: CreateCaseRequest, current_user=Depends(get_lawyer))
         "performed_by": current_user["id"],
     }).execute()
 
+    supabase.table("notification").insert({
+        "user_id": current_user["id"],
+        "type":    "CASE_UPDATE",
+        "title":   "New Case Created",
+        "message": f"{body.title} ({body.case_number}) has been successfully created.",
+    }).execute()
+
     return result.data[0]
 
 # ─── GET /api/cases/client/:clientId ────────────────────
@@ -177,7 +184,15 @@ async def update_case_status(case_id: str, body: UpdateCaseStatusRequest, curren
         "performed_by": current_user["id"],
     }).execute()
 
-    return result.data[0]
+    case_data = result.data[0]
+    supabase.table("notification").insert({
+        "user_id": case_data.get("lawyer_id") or current_user["id"],
+        "type":    "CASE_UPDATE",
+        "title":   "Case Status Updated",
+        "message": f"'{case_data.get('title', 'A case')}' status changed to {body.status}.",
+    }).execute()
+
+    return case_data
 
 # ─── DELETE /api/cases/:id (archive) ────────────────────
 
@@ -248,6 +263,13 @@ async def add_team_member(case_id: str, body: AddTeamMemberRequest, current_user
         "firm_id": current_user["firm_id"],
         "action": "Team member added",
         "performed_by": current_user["id"],
+    }).execute()
+
+    supabase.table("notification").insert({
+        "user_id": body.user_id,
+        "type":    "TASK_ASSIGNED",
+        "title":   "You've Been Added to a Case",
+        "message": f"You were added to a case team by {current_user.get('full_name', 'a colleague')}.",
     }).execute()
 
     return result.data[0]

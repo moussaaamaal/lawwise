@@ -120,6 +120,13 @@ async def upload_document(
         "performed_by": current_user["id"],
     }).execute()
 
+    supabase.table("notification").insert({
+        "user_id": current_user["id"],
+        "type":    "DOCUMENT_SHARED",
+        "title":   "Document Uploaded",
+        "message": f"{file_name} has been uploaded successfully.",
+    }).execute()
+
     return result.data[0]
 
 # ─── POST /api/documents/voice-note ─────────────────────
@@ -236,6 +243,15 @@ async def share_document(doc_id: str, current_user=Depends(get_lawyer)):
     }).eq("id", doc_id).eq("firm_id", current_user["firm_id"]).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    doc_data = result.data[0]
+    supabase.table("notification").insert({
+        "user_id": current_user["id"],
+        "type":    "DOCUMENT_SHARED",
+        "title":   "Document Shared with Client",
+        "message": f"{doc_data.get('file_name', 'A document')} has been shared with the client.",
+    }).execute()
+
     return {"message": "Document shared with client"}
 
 # ─── POST /api/documents/:id/ai-summarize ───────────────

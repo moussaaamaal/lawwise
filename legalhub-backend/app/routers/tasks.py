@@ -82,6 +82,15 @@ async def create_task(body: CreateTaskRequest, current_user=Depends(get_lawyer))
             "performed_by": current_user["id"],
         }).execute()
 
+    assigned_to = data.get("assigned_to", current_user["id"])
+    due_suffix  = f" — Due: {body.due_date}" if body.due_date else ""
+    supabase.table("notification").insert({
+        "user_id": assigned_to,
+        "type":    "TASK_ASSIGNED",
+        "title":   "New Task Assigned" if assigned_to != current_user["id"] else "Task Created",
+        "message": f"{body.title}{due_suffix}",
+    }).execute()
+
     return result.data[0]
 
 # ─── PATCH /api/tasks/:id/status ────────────────────────
