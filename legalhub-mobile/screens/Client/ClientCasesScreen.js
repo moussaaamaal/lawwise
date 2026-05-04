@@ -25,9 +25,10 @@ const STATUS_CONFIG = {
 };
 
 const PRIORITY_CONFIG = {
-  URGENT: { label: 'Urgent', color: C.red600 },
-  HIGH:   { label: 'High',   color: '#EA580C' },
+  URGENT: { label: 'Urgent', color: C.red600   },
+  HIGH:   { label: 'High',   color: C.red600   },
   MEDIUM: { label: 'Medium', color: C.amber600 },
+  NORMAL: { label: 'Normal', color: C.green600 },
   LOW:    { label: 'Low',    color: C.green600 },
 };
 

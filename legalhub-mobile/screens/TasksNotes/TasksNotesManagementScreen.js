@@ -1,279 +1,600 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  Image, StyleSheet, SafeAreaView, StatusBar,
+  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
+  RefreshControl, Alert,
 } from 'react-native';
-import { FontAwesome5, FontAwesome } from '@expo/vector-icons';
+import { FontAwesome5 } from '@expo/vector-icons';
+import { tasksAPI, notesAPI, casesAPI } from '../../services/api';
 
-const C = {
-  primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B', white: '#FFFFFF',
-  g50: '#F9FAFB', g100: '#F3F4F6', g200: '#E5E7EB', g400: '#9CA3AF', g500: '#6B7280', g600: '#4B5563',
-  red50: '#FEF2F2', red100: '#FEE2E2', red600: '#DC2626',
-  amber50: '#FFFBEB', amber100: '#FEF3C7', amber600: '#D97706',
+// ─── Colors ───────────────────────────────────────────────────────────────────
+const COLORS = {
+  primary: '#1E40AF', dark: '#1E293B', white: '#FFFFFF',
+  gray50: '#F9FAFB', gray100: '#F3F4F6', gray200: '#E5E7EB',
+  gray400: '#9CA3AF', gray500: '#6B7280', gray600: '#4B5563',
+  red50: '#FEF2F2', red100: '#FEE2E2', red500: '#EF4444', red600: '#DC2626',
+  amber50: '#FFFBEB', amber100: '#FEF3C7', amber500: '#F59E0B', amber600: '#D97706',
   green50: '#F0FDF4', green100: '#DCFCE7', green600: '#16A34A',
   blue50: '#EFF6FF', blue100: '#DBEAFE', blue600: '#2563EB',
   purple50: '#FAF5FF', purple100: '#F3E8FF', purple600: '#9333EA',
 };
 
-const FILTER_TABS = ['All Tasks', 'Pending', 'Completed', 'Notes', 'Important'];
+// ─── Task helpers (identiques HomeScreen) ────────────────────────────────────
+const TASK_PRIORITY = {
+  URGENT: { label: 'Urgent', color: COLORS.red600,   bg: COLORS.red50   },
+  HIGH:   { label: 'High',   color: COLORS.red600,   bg: COLORS.red50   },
+  MEDIUM: { label: 'Medium', color: COLORS.amber600, bg: COLORS.amber50 },
+  NORMAL: { label: 'Normal', color: COLORS.green600, bg: COLORS.green50 },
+  LOW:    { label: 'Low',    color: COLORS.green600, bg: COLORS.green50 },
+};
 
-const URGENT_TASKS = [
-  { title: 'File Motion to Dismiss', due: 'Due Today - 5:00 PM', dueColor: C.red600, dueBg: C.red50, caseId: 'CR-2024-1247', caseIdColor: C.primary, caseIdBg: C.blue50, desc: 'Complete and submit motion documents to criminal court for State vs. Johnson case', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', client: 'Marcus Johnson', actionIcon: 'paperclip', actionLabel: '3 Files', actionColor: C.primary, actionBg: C.blue50, borderColor: C.red600 },
-  { title: 'Prepare Witness Statement', due: 'Due Today - 6:00 PM', dueColor: C.red600, dueBg: C.red50, caseId: 'CR-2024-1247', caseIdColor: C.primary, caseIdBg: C.blue50, desc: "Draft and finalize witness statements for tomorrow's hearing", avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', client: 'Marcus Johnson', actionIcon: 'microphone', actionLabel: 'Voice Note', actionColor: C.purple600, actionBg: C.purple50, borderColor: C.red600 },
-  { title: 'Review Contract Amendment', due: 'Due Tomorrow', dueColor: C.amber600, dueBg: C.amber50, caseId: 'CV-2024-0892', caseIdColor: C.primary, caseIdBg: C.blue50, desc: 'Review and provide feedback on contract modifications requested by Mitchell Corp', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', client: 'Sarah Mitchell', actionIcon: 'robot', actionLabel: 'AI Review', actionColor: C.primary, actionBg: C.blue50, borderColor: C.amber600 },
+const getDueBadge = (dueDate, priority) => {
+  if (!dueDate) return { badge: 'Pending', badgeColor: COLORS.amber600, badgeBg: COLORS.amber50, borderColor: COLORS.amber500, timeColor: COLORS.amber600 };
+  const today = new Date().toISOString().split('T')[0];
+  if (dueDate < today)   return { badge: 'Overdue',  badgeColor: COLORS.red600,   badgeBg: COLORS.red50,   borderColor: COLORS.red500,   timeColor: COLORS.red600   };
+  if (dueDate === today) return { badge: 'Due Today', badgeColor: COLORS.red600,   badgeBg: COLORS.red50,   borderColor: COLORS.red500,   timeColor: COLORS.red600   };
+  if (priority === 'URGENT' || priority === 'HIGH')
+    return { badge: 'Urgent', badgeColor: COLORS.red600, badgeBg: COLORS.red50, borderColor: COLORS.red500, timeColor: COLORS.red600 };
+  return { badge: 'Pending', badgeColor: COLORS.amber600, badgeBg: COLORS.amber50, borderColor: COLORS.amber500, timeColor: COLORS.amber600 };
+};
+
+const formatRelativeDate = (iso) => {
+  if (!iso) return null;
+  const d    = new Date(iso);
+  const now  = new Date();
+  const diff = Math.round((d - now) / 86400000);
+  if (diff < 0)  return `${Math.abs(diff)}d overdue`;
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff < 7)  return `${diff}d left`;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+};
+
+// ─── Note helpers (identiques CaseDetailsScreen) ──────────────────────────────
+const NOTE_COLORS = [
+  { id: 'yellow', bg: '#FEF9C3', border: '#FDE047' },
+  { id: 'blue',   bg: '#DBEAFE', border: '#93C5FD' },
+  { id: 'green',  bg: '#DCFCE7', border: '#86EFAC' },
+  { id: 'pink',   bg: '#FCE7F3', border: '#F9A8D4' },
+  { id: 'purple', bg: '#F3E8FF', border: '#D8B4FE' },
+  { id: 'orange', bg: '#FFEDD5', border: '#FED7AA' },
+];
+const NOTE_FALLBACKS = [
+  { bg: COLORS.amber50,  border: COLORS.amber600 },
+  { bg: COLORS.blue50,   border: COLORS.primary  },
+  { bg: COLORS.purple50, border: COLORS.purple600 },
 ];
 
-const PENDING_TASKS = [
-  { title: 'Prepare Discovery Documents', due: 'Due Mar 18', dueColor: C.blue600, dueBg: C.blue50, caseId: 'FM-2024-0453', desc: 'Compile all discovery materials for Chen estate case', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', client: 'Robert Chen', actionIcon: null },
-  { title: 'Draft Settlement Proposal', due: 'Due Mar 19', dueColor: C.blue600, dueBg: C.blue50, caseId: 'CV-2024-0892', desc: 'Create comprehensive settlement offer for Mitchell Corp dispute', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', client: 'Sarah Mitchell', actionIcon: 'robot', actionLabel: 'AI Draft', actionColor: C.primary, actionBg: C.blue50 },
-  { title: 'Client Follow-up Call', due: 'Due Mar 20', dueColor: C.green600, dueBg: C.green50, caseId: 'Multiple', desc: 'Schedule and conduct follow-up calls with 3 clients regarding case updates', avatars: ['https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg'], actionIcon: 'phone', actionLabel: 'Call', actionColor: C.green600, actionBg: C.green50 },
-];
+const parseInline = (text, inherited = {}) => {
+  if (!text) return [];
+  const patterns = [
+    { re: /^\*\*\*(.+?)\*\*\*/, bold: true, italic: true },
+    { re: /^\*\*(.+?)\*\*/,     bold: true               },
+    { re: /^__(.+?)__/,                      underline: true },
+    { re: /^\*(.+?)\*/,         italic: true              },
+  ];
+  const parts = [];
+  let i = 0;
+  while (i < text.length) {
+    let matched = false;
+    for (const p of patterns) {
+      const m = p.re.exec(text.slice(i));
+      if (m) {
+        if (m.index > 0) parts.push({ text: text.slice(i, i + m.index), ...inherited });
+        const formats = { ...inherited, ...(p.bold && { bold: true }), ...(p.italic && { italic: true }), ...(p.underline && { underline: true }) };
+        parts.push(...parseInline(m[1], formats));
+        i += m.index + m[0].length;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      const nextSpecial = text.slice(i).search(/\*\*\*|\*\*|__|(?<!\*)\*(?!\*)/);
+      const take = nextSpecial === -1 ? text.length - i : nextSpecial || 1;
+      parts.push({ text: text.slice(i, i + take), ...inherited });
+      i += take;
+    }
+  }
+  return parts;
+};
 
-const VOICE_NOTES = [
-  { title: 'Client Consultation Notes', time: 'Recorded today at 2:30 PM • 4m 32s', caseId: 'CV-2024-0892', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', transcript: '"Client expressed concerns about timeline. Discussed potential settlement options. Need to review contract clause 14.2 and prepare amendment proposal. Follow up next Tuesday..."', actions: [{ icon: 'play', bg: C.purple50, color: C.purple600 }, { icon: 'share', bg: C.blue50, color: C.primary }] },
-  { title: 'Witness Interview Summary', time: 'Recorded today at 11:15 AM • 7m 18s', caseId: 'CR-2024-1247', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', transcript: '"Witness provided detailed account of incident. Key points: timeline matches security footage, corroborates client statement. Need to prepare formal witness statement and schedule deposition..."', actions: [{ icon: 'play', bg: C.purple50, color: C.purple600 }, { icon: 'robot', bg: C.blue50, color: C.primary }] },
-  { title: 'Case Strategy Discussion', time: 'Recorded yesterday at 3:45 PM • 5m 52s', caseId: 'CR-2024-1247', avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', transcript: '"Discussed case strategy with senior partner. Agreed to focus on procedural defense. Need to file motion within 3 days. Research similar precedents from 2019-2022..."', actions: [{ icon: 'play', bg: C.purple50, color: C.purple600 }, { icon: 'star', bg: C.amber50, color: C.amber600 }] },
-];
-
-export default function TasksNotesManagementScreen({ navigation }) {
-  const [activeFilter, setActiveFilter] = useState(0);
-  const [checked, setChecked] = useState({});
-
-  const toggleCheck = (key) => setChecked(prev => ({ ...prev, [key]: !prev[key] }));
-
-  const TaskCard = ({ task, id, urgent }) => (
-    <View style={[s.taskCard, { borderLeftColor: task.borderColor || C.g200 }]}>
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        <TouchableOpacity
-          style={[s.checkbox, checked[id] && { backgroundColor: C.primary, borderColor: C.primary }]}
-          onPress={() => toggleCheck(id)}
+const RichText = ({ text, style, numberOfLines }) => {
+  const parts = parseInline(text || '');
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.map((p, i) => (
+        <Text
+          key={i}
+          style={{
+            fontWeight:      p.bold      ? '700' : undefined,
+            fontStyle:       p.italic    ? 'italic' : undefined,
+            textDecorationLine: p.underline ? 'underline' : undefined,
+          }}
         >
-          {checked[id] && <FontAwesome5 name="check" size={10} color={C.white} />}
+          {p.text}
+        </Text>
+      ))}
+    </Text>
+  );
+};
+
+const toNoteDisplay = (note, idx) => {
+  const raw        = note.content || '';
+  const colorMatch = raw.match(/^\[color:(\w+)\]\n?/);
+  const colorId    = colorMatch ? colorMatch[1] : null;
+  const theme      = NOTE_COLORS.find(c => c.id === colorId);
+  const style      = theme
+    ? { bg: theme.bg, border: theme.border }
+    : NOTE_FALLBACKS[idx % NOTE_FALLBACKS.length];
+  const content    = colorMatch ? raw.slice(colorMatch[0].length) : raw;
+  const dateLabel  = note.created_at
+    ? new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—';
+  return {
+    id: note.id, case_id: note.case_id,
+    author: note.app_user?.full_name || note.author_name || 'Team Member',
+    content, time: dateLabel,
+    borderColor: style.border, bg: style.bg,
+  };
+};
+
+// ─── Filter tabs (sans "In Progress") ────────────────────────────────────────
+const STATUS_TABS = [
+  { label: 'All',       key: 'ALL'       },
+  { label: 'Pending',   key: 'PENDING'   },
+  { label: 'Completed', key: 'COMPLETED' },
+  { label: 'Notes',     key: 'NOTES'     },
+];
+
+// ─── TaskCard (identique HomeScreen) ─────────────────────────────────────────
+function TaskCard({ item, onDone, onDelete }) {
+  const done = item.status === 'COMPLETED';
+  return (
+    <View style={[st.card, { borderLeftWidth: 4, borderLeftColor: done ? COLORS.gray200 : item.borderColor, opacity: done ? 0.75 : 1 }]}>
+      <View style={st.row}>
+        <TouchableOpacity
+          style={[st.checkbox, done && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+          onPress={() => onDone && onDone(item)}
+        >
+          {done && <FontAwesome5 name="check" size={10} color={COLORS.white} />}
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-            <Text style={[s.taskTitle, checked[id] && { textDecorationLine: 'line-through', color: C.g400 }]}>{task.title}</Text>
-            <TouchableOpacity><FontAwesome5 name="ellipsis-v" size={13} color={C.g400} /></TouchableOpacity>
-          </View>
-          <Text style={s.taskDesc} numberOfLines={2}>{task.desc}</Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <View style={[s.pill, { backgroundColor: task.dueBg }]}>
-              <FontAwesome5 name="clock" size={9} color={task.dueColor} />
-              <Text style={[s.pillTxt, { color: task.dueColor }]}>{task.due}</Text>
+          {/* Title + priority badge */}
+          <View style={[st.row, { marginBottom: 6, flexWrap: 'wrap', gap: 6 }]}>
+            <Text style={[st.cardTitle, { flex: 1 }, done && { textDecorationLine: 'line-through', color: COLORS.gray400 }]}>{item.title}</Text>
+            <View style={[st.tag, { backgroundColor: item.prioBg }]}>
+              <Text style={[st.tagText, { color: item.prioColor }]}>{item.prioLabel}</Text>
             </View>
-            <View style={[s.pill, { backgroundColor: task.caseIdBg || C.g100 }]}>
-              <Text style={[s.pillTxt, { color: task.caseIdColor || C.g600 }]}>{task.caseId}</Text>
-            </View>
+            <TouchableOpacity onPress={() => onDelete && onDelete(item)} style={{ padding: 2 }}>
+              <FontAwesome5 name="trash-alt" size={12} color={COLORS.gray400} />
+            </TouchableOpacity>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.g100 }}>
-            {task.avatars ? (
-              <View style={{ flexDirection: 'row' }}>
-                {task.avatars.map((av, i) => (
-                  <Image key={i} source={{ uri: av }} style={[s.avatarTiny, { marginLeft: i > 0 ? -8 : 0, zIndex: task.avatars.length - i }]} />
-                ))}
+          {/* Description */}
+          {!!item.description && (
+            <Text style={[st.cardSubtitle, { marginBottom: 6 }, done && { textDecorationLine: 'line-through', color: COLORS.gray400 }]} numberOfLines={2}>{item.description}</Text>
+          )}
+          {/* Case name */}
+          {!!item.caseName && (
+            <View style={[st.row, { marginBottom: 3 }]}>
+              <FontAwesome5 name="briefcase" size={10} color={COLORS.gray400} />
+              <Text style={[st.gray500Sm, { marginLeft: 5 }]} numberOfLines={1}>{item.caseName}</Text>
+            </View>
+          )}
+          {/* Lawyer + due date */}
+          <View style={st.row}>
+            {item.lawyerName ? (
+              <>
+                <FontAwesome5 name="user-tie" size={10} color={COLORS.gray400} />
+                <Text style={[st.gray500Sm, { marginLeft: 5, flex: 1 }]} numberOfLines={1}>{item.lawyerName}</Text>
+              </>
+            ) : <View style={{ flex: 1 }} />}
+            {!!item.timeLeft && (
+              <View style={st.row}>
+                <FontAwesome5 name="clock" size={10} color={item.timeColor} />
+                <Text style={[st.gray500Sm, { color: item.timeColor, fontWeight: '600', marginLeft: 4 }]}>{item.timeLeft}</Text>
               </View>
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Image source={{ uri: task.avatar }} style={s.avatarTiny} />
-                <Text style={s.clientMeta}>{task.client}</Text>
-              </View>
-            )}
-            {task.actionIcon && (
-              <TouchableOpacity style={[s.pill, { backgroundColor: task.actionBg, paddingHorizontal: 10, paddingVertical: 6 }]}>
-                <FontAwesome5 name={task.actionIcon} size={11} color={task.actionColor} />
-                <Text style={[s.pillTxt, { color: task.actionColor }]}>{task.actionLabel}</Text>
-              </TouchableOpacity>
             )}
           </View>
         </View>
       </View>
     </View>
   );
+}
+
+// ─── NoteCard (identique CaseDetailsScreen + case label) ─────────────────────
+function NoteCard({ note, caseName, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <View style={[nt.card, { backgroundColor: note.bg, borderLeftColor: note.borderColor }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+        <View style={[nt.avatar, { backgroundColor: COLORS.blue100, alignItems: 'center', justifyContent: 'center' }]}>
+          <FontAwesome5 name="user" size={14} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={nt.author}>{note.author}</Text>
+          <Text style={nt.time}>{note.time}</Text>
+        </View>
+        <TouchableOpacity onPress={() => onDelete && onDelete(note)} style={{ padding: 4 }}>
+          <FontAwesome5 name="trash-alt" size={13} color={COLORS.gray400} />
+        </TouchableOpacity>
+      </View>
+
+      <RichText
+        text={note.content}
+        style={{ fontSize: 13, color: COLORS.gray600, lineHeight: 20 }}
+        numberOfLines={expanded ? undefined : 4}
+      />
+
+      {/* Case badge */}
+      {!!caseName && (
+        <View style={[st.row, { marginTop: 8, gap: 5 }]}>
+          <FontAwesome5 name="briefcase" size={10} color={note.borderColor} />
+          <Text style={{ fontSize: 11, fontWeight: '600', color: note.borderColor }}>{caseName}</Text>
+        </View>
+      )}
+
+      <TouchableOpacity
+        style={[nt.readMore, { borderTopColor: note.borderColor + '40' }]}
+        onPress={() => setExpanded(e => !e)}
+      >
+        <Text style={[nt.readMoreTxt, { color: note.borderColor }]}>{expanded ? 'Show less' : 'Read more'}</Text>
+        <FontAwesome5 name={expanded ? 'chevron-up' : 'chevron-right'} size={10} color={note.borderColor} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Main screen ─────────────────────────────────────────────────────────────
+export default function TasksNotesManagementScreen({ navigation }) {
+  const [activeTab,  setActiveTab]  = useState(0);
+  const [tasks,      setTasks]      = useState([]);
+  const [notes,      setNotes]      = useState([]);
+  const [caseMap,    setCaseMap]    = useState({});
+  const [loading,    setLoading]    = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search,     setSearch]     = useState('');
+
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    try {
+      const [t, n, cases] = await Promise.all([
+        tasksAPI.list(),
+        notesAPI.list(),
+        casesAPI.list().catch(() => []),
+      ]);
+      setTasks(t || []);
+      setNotes(n || []);
+      const map = {};
+      (cases || []).forEach(c => { map[c.id] = c.title || c.case_number || 'Case'; });
+      setCaseMap(map);
+    } catch (e) {
+      if (!isRefresh) Alert.alert('Error', e.message || 'Failed to load');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Map raw task → display shape (même logique que HomeScreen)
+  const mapTask = (task) => {
+    const dueBadge = getDueBadge(task.due_date, task.priority);
+    const prioKey  = (task.priority || 'NORMAL').toUpperCase();
+    const prioCfg  = TASK_PRIORITY[prioKey] || TASK_PRIORITY.NORMAL;
+    return {
+      id:          task.id,
+      _raw:        task,
+      status:      task.status,
+      title:       task.title,
+      description: task.description || null,
+      caseName:    task.case_file?.title || task.case_file?.case_number || null,
+      lawyerName:  task.app_user?.full_name || null,
+      prioLabel:   prioCfg.label,
+      prioColor:   prioCfg.color,
+      prioBg:      prioCfg.bg,
+      timeLeft:    task.due_date ? formatRelativeDate(task.due_date) : null,
+      ...dueBadge,
+    };
+  };
+
+  const handleToggle = useCallback(async (item) => {
+    const task      = item._raw;
+    const newStatus = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
+    try {
+      await tasksAPI.updateStatus(task.id, newStatus);
+    } catch (e) {
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: task.status } : t));
+      Alert.alert('Error', e.message || 'Failed to update task');
+    }
+  }, []);
+
+  const handleDeleteTask = useCallback((item) => {
+    Alert.alert('Delete Task', `Delete "${item.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          setTasks(prev => prev.filter(t => t.id !== item.id));
+          try { await tasksAPI.delete(item.id); } catch { load(); }
+        },
+      },
+    ]);
+  }, [load]);
+
+  const handleDeleteNote = useCallback((note) => {
+    Alert.alert('Delete Note', 'Delete this note?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          setNotes(prev => prev.filter(n => n.id !== note.id));
+          try { await notesAPI.delete(note.id); } catch { load(); }
+        },
+      },
+    ]);
+  }, [load]);
+
+  const tabKey = STATUS_TABS[activeTab].key;
+  const q      = search.toLowerCase();
+
+  const filteredTasks = tasks
+    .filter(t => tabKey === 'ALL' || tabKey === 'NOTES' || t.status === tabKey)
+    .filter(t => !q || (t.title || '').toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q));
+
+  const filteredNotes = notes.filter(n => !q || (n.content || '').toLowerCase().includes(q));
+
+  const total     = tasks.length;
+  const pending   = tasks.filter(t => t.status === 'PENDING').length;
+  const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={st.safe}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.gray50 }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={s.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={C.primary} />
+    <SafeAreaView style={st.safe}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
       {/* HEADER */}
-      <View style={s.header}>
-        <View style={s.headerRow}>
-          <TouchableOpacity style={s.backBtn} onPress={() => navigation?.goBack?.()}>
-            <FontAwesome5 name="arrow-left" size={16} color={C.white} />
+      <View style={st.header}>
+        <View style={st.headerRow}>
+          <TouchableOpacity style={st.backBtn} onPress={() => navigation?.goBack?.()}>
+            <FontAwesome5 name="arrow-left" size={16} color={COLORS.white} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={s.headerTitle}>Tasks & Notes</Text>
-            <Text style={s.headerSub}>Manage tasks, notes & voice memos</Text>
+            <Text style={st.headerTitle}>Tasks & Notes</Text>
+            <Text style={st.headerSub}>{total} task{total !== 1 ? 's' : ''} · {notes.length} note{notes.length !== 1 ? 's' : ''}</Text>
           </View>
-          <TouchableOpacity style={s.backBtn}>
-            <FontAwesome5 name="plus" size={16} color={C.white} />
-          </TouchableOpacity>
         </View>
-        <View style={s.searchRow}>
+        <View style={st.searchRow}>
           <FontAwesome5 name="search" size={14} color="rgba(255,255,255,0.7)" />
-          <TextInput style={s.searchInput} placeholder="Search tasks, notes..." placeholderTextColor="rgba(255,255,255,0.6)" />
+          <TextInput
+            style={st.searchInput}
+            placeholder="Search tasks, notes..."
+            placeholderTextColor="rgba(255,255,255,0.6)"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {!!search && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <FontAwesome5 name="times" size={13} color="rgba(255,255,255,0.8)" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-
-        {/* STATS 4 cols */}
-        <View style={[s.section, { backgroundColor: C.blue50 }]}>
+      <ScrollView
+        style={st.scroll}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={[COLORS.primary]} tintColor={COLORS.primary} />}
+      >
+        {/* STATS */}
+        <View style={[st.section, { backgroundColor: COLORS.blue50 }]}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {[
-              { icon: 'tasks', iconColor: C.primary, iconBg: C.blue100, value: '28', label: 'Total' },
-              { icon: 'clock', iconColor: C.amber600, iconBg: C.amber100, value: '12', label: 'Pending' },
-              { icon: 'check', iconColor: C.green600, iconBg: C.green100, value: '16', label: 'Done' },
-              { icon: 'sticky-note', iconColor: C.purple600, iconBg: C.purple100, value: '34', label: 'Notes' },
-            ].map((st, i) => (
-              <View key={i} style={s.statCard}>
-                <View style={[s.statIcon, { backgroundColor: st.iconBg }]}>
-                  <FontAwesome5 name={st.icon} size={16} color={st.iconColor} />
+              { icon: 'tasks',       iconColor: COLORS.primary,   iconBg: COLORS.blue100,   value: String(total),        label: 'Total'   },
+              { icon: 'clock',       iconColor: COLORS.amber600,  iconBg: COLORS.amber100,  value: String(pending),      label: 'Pending' },
+              { icon: 'check',       iconColor: COLORS.green600,  iconBg: COLORS.green100,  value: String(completed),    label: 'Done'    },
+              { icon: 'sticky-note', iconColor: COLORS.purple600, iconBg: COLORS.purple100, value: String(notes.length), label: 'Notes'   },
+            ].map((st2, i) => (
+              <View key={i} style={st.statCard}>
+                <View style={[st.statIcon, { backgroundColor: st2.iconBg }]}>
+                  <FontAwesome5 name={st2.icon} size={16} color={st2.iconColor} />
                 </View>
-                <Text style={s.statVal}>{st.value}</Text>
-                <Text style={s.statLabel}>{st.label}</Text>
+                <Text style={st.statVal}>{st2.value}</Text>
+                <Text style={st.statLabel}>{st2.label}</Text>
               </View>
             ))}
           </View>
         </View>
 
         {/* QUICK ACTIONS */}
-        <View style={s.section}>
+        <View style={st.section}>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity style={[s.qaCard, { backgroundColor: C.primary, flex: 1 }]}>
-              <View style={s.qaIconWrap}><FontAwesome5 name="plus" size={20} color={C.white} /></View>
-              <View><Text style={s.qaLabel}>Add Task</Text><Text style={s.qaSub}>Create new task</Text></View>
+            <TouchableOpacity
+              style={[st.qaCard, { backgroundColor: COLORS.primary, flex: 1 }]}
+              onPress={() => navigation?.navigate?.('AddTask')}
+            >
+              <View style={st.qaIconWrap}><FontAwesome5 name="plus" size={20} color={COLORS.white} /></View>
+              <View><Text style={st.qaLabel}>Add Task</Text><Text style={st.qaSub}>Create new task</Text></View>
             </TouchableOpacity>
-            <TouchableOpacity style={[s.qaCard, { backgroundColor: C.purple600, flex: 1 }]}>
-              <View style={s.qaIconWrap}><FontAwesome5 name="microphone" size={20} color={C.white} /></View>
-              <View><Text style={s.qaLabel}>Voice Note</Text><Text style={s.qaSub}>Record & transcribe</Text></View>
+            <TouchableOpacity
+              style={[st.qaCard, { backgroundColor: COLORS.purple600, flex: 1 }]}
+              onPress={() => navigation?.navigate?.('VoiceNote')}
+            >
+              <View style={st.qaIconWrap}><FontAwesome5 name="microphone" size={20} color={COLORS.white} /></View>
+              <View><Text style={st.qaLabel}>Voice Note</Text><Text style={st.qaSub}>Record & transcribe</Text></View>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* FILTER TABS */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterBar} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 10 }}>
-          {FILTER_TABS.map((t, i) => (
-            <TouchableOpacity key={i} style={[s.filterTab, activeFilter === i && s.filterTabActive]} onPress={() => setActiveFilter(i)}>
-              <Text style={[s.filterTabTxt, activeFilter === i && s.filterTabTxtActive]}>{t}</Text>
-            </TouchableOpacity>
-          ))}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={st.filterBar}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 10 }}
+        >
+          {STATUS_TABS.map((t, i) => {
+            const count = t.key === 'NOTES' ? notes.length
+              : t.key === 'ALL' ? tasks.length
+              : tasks.filter(tk => tk.status === t.key).length;
+            return (
+              <TouchableOpacity
+                key={i}
+                style={[st.filterTab, activeTab === i && st.filterTabActive]}
+                onPress={() => setActiveTab(i)}
+              >
+                <Text style={[st.filterTabTxt, activeTab === i && st.filterTabTxtActive]}>{t.label}</Text>
+                <View style={[st.filterBadge, activeTab === i && st.filterBadgeActive]}>
+                  <Text style={[st.filterBadgeTxt, activeTab === i && st.filterBadgeTxtActive]}>{count}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
-        {/* URGENT TASKS */}
-        <View style={[s.section, { backgroundColor: '#FFF8F8' }]}>
-          <View style={s.sHRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={[s.sIconWrap, { backgroundColor: C.red100 }]}><FontAwesome5 name="exclamation-triangle" size={13} color={C.red600} /></View>
-              <Text style={s.sectionTitle}>Urgent Tasks</Text>
-            </View>
-            <View style={[s.pill, { backgroundColor: C.red100, paddingHorizontal: 10, paddingVertical: 5 }]}>
-              <Text style={[s.pillTxt, { color: C.red600, fontWeight: '700' }]}>3 Due Today</Text>
-            </View>
-          </View>
-          {URGENT_TASKS.map((t, i) => <TaskCard key={i} task={t} id={`urgent-${i}`} urgent />)}
-        </View>
-
-        {/* PENDING TASKS */}
-        <View style={s.section}>
-          <View style={s.sHRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={[s.sIconWrap, { backgroundColor: C.blue100 }]}><FontAwesome5 name="list-check" size={13} color={C.primary} /></View>
-              <Text style={s.sectionTitle}>Pending Tasks</Text>
-            </View>
-            <TouchableOpacity><Text style={s.sectionAction}>View All (9)</Text></TouchableOpacity>
-          </View>
-          {PENDING_TASKS.map((t, i) => <TaskCard key={i} task={{ ...t, borderColor: C.g200 }} id={`pending-${i}`} />)}
-        </View>
-
-        {/* VOICE NOTES */}
-        <View style={[s.section, { backgroundColor: C.purple50 }]}>
-          <View style={s.sHRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={[s.sIconWrap, { backgroundColor: C.purple100 }]}><FontAwesome5 name="microphone" size={13} color={C.purple600} /></View>
-              <Text style={s.sectionTitle}>Voice Notes</Text>
-            </View>
-            <TouchableOpacity><Text style={s.sectionAction}>View All (12)</Text></TouchableOpacity>
-          </View>
-          {VOICE_NOTES.map((vn, i) => (
-            <View key={i} style={s.voiceCard}>
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 10 }}>
-                <View style={s.micIcon}><FontAwesome5 name="microphone" size={20} color={C.purple600} /></View>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={s.voiceTitle}>{vn.title}</Text>
-                    <TouchableOpacity><FontAwesome5 name="ellipsis-v" size={13} color={C.g400} /></TouchableOpacity>
-                  </View>
-                  <Text style={s.voiceTime}>{vn.time}</Text>
+        {/* NOTES TAB */}
+        {tabKey === 'NOTES' ? (
+          <View style={[st.section, { backgroundColor: COLORS.purple50 }]}>
+            <View style={st.sHRow}>
+              <View style={st.row}>
+                <View style={[st.sIconWrap, { backgroundColor: COLORS.purple100 }]}>
+                  <FontAwesome5 name="sticky-note" size={13} color={COLORS.purple600} />
                 </View>
+                <Text style={[st.sectionTitle, { marginLeft: 10 }]}>Notes</Text>
               </View>
-              <View style={s.transcriptBox}>
-                <Text style={s.transcriptTxt} numberOfLines={3}>{vn.transcript}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                  <View style={[s.pill, { backgroundColor: C.blue50 }]}>
-                    <Text style={[s.pillTxt, { color: C.primary }]}>{vn.caseId}</Text>
-                  </View>
-                  <Image source={{ uri: vn.avatar }} style={s.avatarTiny} />
-                </View>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {vn.actions.map((a, j) => (
-                    <TouchableOpacity key={j} style={[s.actionBtn, { backgroundColor: a.bg }]}>
-                      <FontAwesome5 name={a.icon} size={13} color={a.color} />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
+              <TouchableOpacity
+                style={st.addNoteBtn}
+                onPress={() => navigation?.navigate?.('AddNote')}
+              >
+                <FontAwesome5 name="plus" size={11} color={COLORS.purple600} />
+                <Text style={st.addNoteBtnTxt}>Add Note</Text>
+              </TouchableOpacity>
             </View>
-          ))}
-        </View>
-
+            {filteredNotes.length === 0 ? (
+              <View style={st.emptyBox}>
+                <FontAwesome5 name="sticky-note" size={28} color={COLORS.gray400} />
+                <Text style={st.emptyTxt}>No notes yet</Text>
+              </View>
+            ) : (
+              filteredNotes.map((n, idx) => (
+                <NoteCard
+                  key={n.id}
+                  note={toNoteDisplay(n, idx)}
+                  caseName={n.case_id ? caseMap[n.case_id] : null}
+                  onDelete={() => handleDeleteNote(n)}
+                />
+              ))
+            )}
+          </View>
+        ) : (
+          /* TASKS TAB */
+          <View style={[st.section, { backgroundColor: COLORS.amber50 }]}>
+            <View style={st.sHRow}>
+              <View style={st.row}>
+                <View style={[st.sIconWrap, { backgroundColor: COLORS.amber100 }]}>
+                  <FontAwesome5 name="tasks" size={13} color={COLORS.amber600} />
+                </View>
+                <Text style={[st.sectionTitle, { marginLeft: 10 }]}>
+                  {STATUS_TABS[activeTab].label === 'All' ? 'All Tasks' : `${STATUS_TABS[activeTab].label} Tasks`}
+                </Text>
+              </View>
+              <Text style={st.sectionCount}>{filteredTasks.length}</Text>
+            </View>
+            {filteredTasks.length === 0 ? (
+              <View style={st.emptyBox}>
+                <FontAwesome5 name="clipboard-check" size={28} color={COLORS.gray400} />
+                <Text style={st.emptyTxt}>{search ? 'No tasks match your search' : 'No tasks here'}</Text>
+              </View>
+            ) : (
+              filteredTasks.map(t => (
+                <TaskCard
+                  key={t.id}
+                  item={mapTask(t)}
+                  onDone={handleToggle}
+                  onDelete={handleDeleteTask}
+                />
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.primary },
-  scroll: { flex: 1, backgroundColor: C.g50 },
-  header: { backgroundColor: C.primary, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '800', color: C.white },
-  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 1 },
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, gap: 10 },
-  searchInput: { flex: 1, color: C.white, fontSize: 13 },
-  section: { paddingHorizontal: 16, paddingVertical: 18, backgroundColor: C.white, marginBottom: 2 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: C.dark },
-  sectionAction: { fontSize: 13, fontWeight: '700', color: C.primary },
-  sHRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  sIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  filterBar: { backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.g200, maxHeight: 52, flexGrow: 0 },
-  filterTab: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 12, backgroundColor: C.g100 },
-  filterTabActive: { backgroundColor: C.primary },
-  filterTabTxt: { fontSize: 12, fontWeight: '600', color: C.g600 },
-  filterTabTxtActive: { color: C.white },
-  statCard: { flex: 1, backgroundColor: C.white, borderRadius: 16, padding: 12, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 5, elevation: 2 },
-  statIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  statVal: { fontSize: 20, fontWeight: '800', color: C.dark },
-  statLabel: { fontSize: 10, color: C.g500, marginTop: 1 },
-  qaCard: { borderRadius: 18, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },
+// ─── Styles tâches (copie fidèle des styles HomeScreen) ───────────────────────
+const st = StyleSheet.create({
+  safe:       { flex: 1, backgroundColor: COLORS.primary },
+  scroll:     { flex: 1, backgroundColor: COLORS.gray50 },
+  header:     { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
+  headerRow:  { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  backBtn:    { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  headerTitle:{ fontSize: 17, fontWeight: '800', color: COLORS.white },
+  headerSub:  { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 1 },
+  searchRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, gap: 10 },
+  searchInput:{ flex: 1, color: COLORS.white, fontSize: 13 },
+
+  section:    { paddingHorizontal: 16, paddingVertical: 18, backgroundColor: COLORS.white, marginBottom: 2 },
+  sHRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  sIconWrap:  { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle:{ fontSize: 16, fontWeight: '800', color: COLORS.dark },
+  sectionCount:{ fontSize: 13, color: COLORS.gray500 },
+  row:        { flexDirection: 'row', alignItems: 'center' },
+
+  filterBar:      { backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.gray200, maxHeight: 56, flexGrow: 0 },
+  filterTab:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 12, backgroundColor: COLORS.gray100 },
+  filterTabActive:{ backgroundColor: COLORS.primary },
+  filterTabTxt:   { fontSize: 12, fontWeight: '600', color: COLORS.gray600 },
+  filterTabTxtActive:{ color: COLORS.white },
+  filterBadge:    { minWidth: 20, height: 18, borderRadius: 9, backgroundColor: COLORS.gray200, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  filterBadgeActive:{ backgroundColor: 'rgba(255,255,255,0.3)' },
+  filterBadgeTxt: { fontSize: 10, fontWeight: '700', color: COLORS.gray600 },
+  filterBadgeTxtActive:{ color: COLORS.white },
+
+  statCard:   { flex: 1, backgroundColor: COLORS.white, borderRadius: 16, padding: 12, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 5, elevation: 2 },
+  statIcon:   { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  statVal:    { fontSize: 20, fontWeight: '800', color: COLORS.dark },
+  statLabel:  { fontSize: 10, color: COLORS.gray500, marginTop: 1 },
+
+  qaCard:     { borderRadius: 18, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },
   qaIconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  qaLabel: { fontSize: 14, fontWeight: '700', color: C.white },
-  qaSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
-  taskCard: { backgroundColor: C.white, borderRadius: 16, padding: 14, borderLeftWidth: 4, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 5, elevation: 2, borderWidth: 1, borderColor: C.g100, marginBottom: 10 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: C.g400, alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0 },
-  taskTitle: { fontSize: 14, fontWeight: '700', color: C.dark, flex: 1, marginRight: 8 },
-  taskDesc: { fontSize: 12, color: C.g600, lineHeight: 18 },
-  avatarTiny: { width: 24, height: 24, borderRadius: 8, borderWidth: 2, borderColor: C.white },
-  clientMeta: { fontSize: 12, color: C.g600, fontWeight: '500' },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
-  pillTxt: { fontSize: 11, fontWeight: '600' },
-  voiceCard: { backgroundColor: C.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 5, elevation: 2, borderWidth: 1, borderColor: '#E9D5FF', marginBottom: 10 },
-  micIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: C.purple100, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  voiceTitle: { fontSize: 14, fontWeight: '700', color: C.dark, flex: 1, marginRight: 6 },
-  voiceTime: { fontSize: 11, color: C.g400, marginTop: 3 },
-  transcriptBox: { backgroundColor: C.purple50, borderRadius: 12, padding: 12 },
-  transcriptTxt: { fontSize: 13, color: C.g600, lineHeight: 20, fontStyle: 'italic' },
-  actionBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  qaLabel:    { fontSize: 14, fontWeight: '700', color: COLORS.white },
+  qaSub:      { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
+
+  // ─── Task card (fidèle HomeScreen) ─────────────────────────────────────────
+  card:        { backgroundColor: COLORS.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, borderWidth: 1, borderColor: COLORS.gray100, marginBottom: 10 },
+  cardTitle:   { fontSize: 14, fontWeight: '700', color: COLORS.dark },
+  cardSubtitle:{ fontSize: 13, color: COLORS.gray600, marginTop: 2 },
+  tag:         { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  tagText:     { fontSize: 11, fontWeight: '600' },
+  checkbox:    { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: COLORS.gray400, marginRight: 12, marginTop: 2 },
+  gray500Sm:   { fontSize: 12, color: COLORS.gray500 },
+
+  addNoteBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.purple100 },
+  addNoteBtnTxt: { fontSize: 12, fontWeight: '700', color: COLORS.purple600 },
+
+  emptyBox:   { alignItems: 'center', paddingVertical: 32, gap: 10 },
+  emptyTxt:   { fontSize: 14, color: COLORS.gray500, fontWeight: '600' },
+});
+
+// ─── Note card styles (fidèles CaseDetailsScreen) ─────────────────────────────
+const nt = StyleSheet.create({
+  card:        { borderLeftWidth: 4, borderRadius: 16, padding: 14, marginBottom: 12 },
+  avatar:      { width: 36, height: 36, borderRadius: 10 },
+  author:      { fontSize: 13, fontWeight: '700', color: COLORS.dark },
+  time:        { fontSize: 10, color: COLORS.gray400, marginTop: 1 },
+  readMore:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, paddingTop: 8, borderTopWidth: 1 },
+  readMoreTxt: { fontSize: 12, fontWeight: '700' },
 });

@@ -96,10 +96,11 @@ const CASE = {
 };
 
 const PRIORITY = {
-  urgent: { label: 'Urgent', color: C.red600,   bg: C.red50,   icon: 'fire',                dot: '#EF4444' },
-  high:   { label: 'High',   color: C.amber600, bg: C.amber50, icon: 'exclamation-triangle', dot: '#F59E0B' },
-  medium: { label: 'Medium', color: C.primary,  bg: C.blue50,  icon: 'minus-circle',         dot: '#3B82F6' },
-  normal: { label: 'Normal', color: C.green600, bg: C.green50, icon: 'check-circle',         dot: '#22C55E' },
+  urgent: { label: 'Urgent', color: C.red600,   bg: C.red50,    icon: 'fire',                dot: '#EF4444' },
+  high:   { label: 'High',   color: C.red600,   bg: C.red50,    icon: 'exclamation-triangle', dot: '#EF4444' },
+  medium: { label: 'Medium', color: C.amber600, bg: C.amber50,  icon: 'minus-circle',         dot: '#F59E0B' },
+  normal: { label: 'Normal', color: C.green600, bg: C.green50,  icon: 'check-circle',         dot: '#22C55E' },
+  low:    { label: 'Low',    color: C.green600, bg: C.green50,  icon: 'check-circle',         dot: '#22C55E' },
 };
 
 const TABS = [
@@ -343,7 +344,7 @@ const toNoteDisplay = (note, idx) => {
     ? new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : '—';
   return {
-    id: note.id, author: note.author_name || 'Team Member',
+    id: note.id, author: note.app_user?.full_name || note.author_name || 'Team Member',
     avatar: note.author_avatar || null,
     content,
     time: dateLabel, borderColor: style.border, bg: style.bg,
@@ -360,6 +361,18 @@ const EVENT_TYPE_LABELS = {
   HEARING: 'Hearing', MEETING: 'Meeting', DEADLINE: 'Deadline',
   CONSULTATION: 'Consultation', COURT_DATE: 'Court Date', OTHER: 'Event',
 };
+const EVENT_TYPE_META = {
+  HEARING:      { icon: 'gavel',          color: C.red600,    bg: C.red50    },
+  COURT_DATE:   { icon: 'landmark',       color: C.purple600, bg: C.purple50 },
+  MEETING:      { icon: 'handshake',      color: C.amber600,  bg: C.amber50  },
+  DEADLINE:     { icon: 'clock',          color: C.blue600,   bg: C.blue50   },
+  CONSULTATION: { icon: 'comments',       color: C.green600,  bg: C.green50  },
+  FILING:       { icon: 'file-signature', color: C.amber600,  bg: C.amber50  },
+  DEPOSITION:   { icon: 'microphone',     color: C.red600,    bg: C.red50    },
+  MEDIATION:    { icon: 'balance-scale',  color: C.green600,  bg: C.green50  },
+  ARBITRATION:  { icon: 'balance-scale',  color: C.purple600, bg: C.purple50 },
+};
+const EV_DEFAULT_META = { icon: 'calendar-check', color: C.primary, bg: C.blue50 };
 const RECUR_LABELS = { daily: '· Daily', weekly: '· Weekly', monthly: '· Monthly', yearly: '· Yearly' };
 
 const cleanAction = (raw = '') => {
@@ -682,10 +695,10 @@ const OverviewTab = ({ caseData, events = [], stats = {}, editMode, setEditMode,
             <Text style={ov.emptyTxt}>No upcoming events</Text>
           </View>
         ) : events.map((ev, idx) => {
-          const isHearing = (ev.event_type === 'HEARING' || ev.event_type === 'COURT_DATE');
-          const evColor   = isHearing ? C.red600 : C.primary;
-          const evBg      = isHearing ? C.red50  : C.blue50;
-          const evIcon    = isHearing ? 'gavel'  : 'calendar';
+          const evMeta  = EVENT_TYPE_META[(ev.event_type || '').toUpperCase()] ?? EV_DEFAULT_META;
+          const evColor = evMeta.color;
+          const evBg    = evMeta.bg;
+          const evIcon  = evMeta.icon;
           const dateLabel = ev.start_datetime
             ? new Date(ev.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             : '—';

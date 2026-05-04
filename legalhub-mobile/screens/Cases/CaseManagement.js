@@ -627,10 +627,10 @@ const CaseCard = ({ item, onViewDetails, onArchive, onUnarchive }) => {
 // ─── Priority → visual meta ───────────────────────────────────────────────
 const PRIORITY_META = {
   URGENT: { urgency: 'Urgent', urgencyIcon: 'fire',                  urgencyColor: C.red600,    urgencyBg: C.red50,    borderColor: C.red500    },
-  HIGH:   { urgency: 'High',   urgencyIcon: 'exclamation-triangle',  urgencyColor: C.amber600,  urgencyBg: C.amber50,  borderColor: C.amber600  },
-  MEDIUM: { urgency: 'Medium', urgencyIcon: 'exclamation-triangle',  urgencyColor: C.amber600,  urgencyBg: C.amber50,  borderColor: C.amber600  },
+  HIGH:   { urgency: 'High',   urgencyIcon: 'exclamation-triangle',  urgencyColor: C.red600,    urgencyBg: C.red50,    borderColor: C.red500    },
+  MEDIUM: { urgency: 'Medium', urgencyIcon: 'minus-circle',          urgencyColor: C.amber600,  urgencyBg: C.amber50,  borderColor: C.amber500  },
   NORMAL: { urgency: 'Normal', urgencyIcon: 'check',                 urgencyColor: C.green600,  urgencyBg: C.green50,  borderColor: C.green600  },
-  LOW:    { urgency: 'Low',    urgencyIcon: 'info-circle',           urgencyColor: C.blue600,   urgencyBg: C.blue50,   borderColor: C.secondary },
+  LOW:    { urgency: 'Low',    urgencyIcon: 'info-circle',           urgencyColor: C.green600,  urgencyBg: C.green50,  borderColor: C.green600  },
 };
 
 // ─── CaseType → label ─────────────────────────────────────────────────────
@@ -1554,12 +1554,21 @@ export default function CaseManagement({ navigation }) {
                 <Text style={ev.emptySub}>No upcoming events scheduled</Text>
               </View>
             ) : deadlines.map((d, i) => {
-              const isHearing  = d.event_type === 'HEARING' || d.event_type === 'COURT_DATE';
-              const isDeadline = d.event_type === 'DEADLINE';
-              const isMeeting  = d.event_type === 'MEETING' || d.event_type === 'CONSULTATION';
-              const accent     = isHearing ? C.red600    : isDeadline ? C.amber600  : isMeeting ? C.purple600 : C.primary;
-              const accentBg   = isHearing ? C.red50     : isDeadline ? C.amber50   : isMeeting ? C.purple50  : C.blue50;
-              const iconName   = isHearing ? 'gavel'     : isDeadline ? 'exclamation-circle' : isMeeting ? 'users' : 'calendar-check';
+              const EV_META = {
+                HEARING:      { color: C.red600,    bg: C.red50,    icon: 'gavel'          },
+                COURT_DATE:   { color: C.purple600, bg: C.purple50, icon: 'landmark'       },
+                MEETING:      { color: C.amber600,  bg: C.amber50,  icon: 'handshake'      },
+                CONSULTATION: { color: C.green600,  bg: C.green50,  icon: 'comments'       },
+                DEADLINE:     { color: C.blue600,   bg: C.blue50,   icon: 'clock'          },
+                FILING:       { color: C.amber600,  bg: C.amber50,  icon: 'file-signature' },
+                DEPOSITION:   { color: C.red600,    bg: C.red50,    icon: 'microphone'     },
+                MEDIATION:    { color: C.green600,  bg: C.green50,  icon: 'balance-scale'  },
+                ARBITRATION:  { color: C.purple600, bg: C.purple50, icon: 'balance-scale'  },
+              };
+              const evMeta   = EV_META[(d.event_type || '').toUpperCase()] || { color: C.primary, bg: C.blue50, icon: 'calendar-check' };
+              const accent   = evMeta.color;
+              const accentBg = evMeta.bg;
+              const iconName = evMeta.icon;
               const typeLabel  = formatEventType(d.event_type);
               const dt         = d.start_datetime ? new Date(d.start_datetime) : null;
               const dayNum     = dt ? dt.getDate() : '—';

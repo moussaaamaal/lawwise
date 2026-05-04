@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  Image, StyleSheet, SafeAreaView, StatusBar,
+  StyleSheet, SafeAreaView, StatusBar, ActivityIndicator,
+  Alert, RefreshControl, Linking, Modal, FlatList,
 } from 'react-native';
-import { FontAwesome5, FontAwesome, Ionicons } from '@expo/vector-icons';
+import { FontAwesome5, Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import { documentsAPI, casesAPI } from '../../services/api';
 
 const C = {
   primary: '#1E40AF', secondary: '#3B82F6', dark: '#1E293B', white: '#FFFFFF',
@@ -13,81 +16,141 @@ const C = {
   green50: '#F0FDF4', green100: '#DCFCE7', green600: '#16A34A',
   blue50: '#EFF6FF', blue100: '#DBEAFE', blue600: '#2563EB',
   purple50: '#FAF5FF', purple100: '#F3E8FF', purple600: '#9333EA',
-  teal50: '#F0FDFA', teal100: '#CCFBF1', teal600: '#0D9488',
-  orange50: '#FFF7ED', orange100: '#FFEDD5', orange600: '#EA580C',
 };
 
-const FILTER_TABS = ['All (68)', 'PDF', 'Word', 'Excel', 'Images', 'Recent'];
+const FILTER_TABS = ['All', 'PDF', 'Word', 'Image', 'Other'];
 
-const SORT_OPTIONS = ['Date ↓', 'Name', 'Size', 'Case'];
+const getFileStyle = (fileType) => {
+  const t = (fileType || '').toUpperCase();
+  if (t === 'PDF')   return { icon: 'file-pdf',   color: C.red600,    bg: C.red100    };
+  if (t === 'WORD')  return { icon: 'file-word',  color: C.blue600,   bg: C.blue100   };
+  if (t === 'EXCEL') return { icon: 'file-excel', color: C.green600,  bg: C.green100  };
+  if (t === 'IMAGE') return { icon: 'file-image', color: C.purple600, bg: C.purple100 };
+  return               { icon: 'file-alt',   color: C.g500,      bg: C.g100      };
+};
 
-const STATS = [
-  { val: '68',   label: 'Total Docs',  icon: 'file-alt',    iconBg: C.blue100,   iconColor: C.primary   },
-  { val: '12',   label: 'This Week',   icon: 'calendar-week',iconBg: C.green100,  iconColor: C.green600  },
-  { val: '2.4GB',label: 'Storage',     icon: 'hdd',         iconBg: C.purple100, iconColor: C.purple600  },
-  { val: '5',    label: 'Pending AI',  icon: 'robot',       iconBg: C.amber100,  iconColor: C.amber600  },
-];
+const CATEGORY_LABEL = {
+  CONTRACT: 'Contract', COURT_DOC: 'Court Doc', EVIDENCE: 'Evidence',
+  FINANCIAL: 'Financial', CLIENT_DOC: 'Client Doc',
+  VOICE_TRANSCRIPT: 'Transcript',
+};
 
-const DOCS = [
-  // ── TODAY ──
-  {
-    group: "Today — March 6, 2026",
-    items: [
-      { id: 1, type: 'pdf',   iconColor: C.red600,    iconBg: C.red100,    name: 'Motion to Dismiss - Draft v3.pdf',    case: 'State vs. Johnson',          caseId: 'CR-2024-1247', size: '2.4 MB', date: '2:30 PM', priority: true,  avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', client: 'Marcus Johnson',   tag: 'Motion',         tagColor: C.red600,    tagBg: C.red50,    actions: [{lib:'FA5', name:'robot', bg:C.blue50, color:C.primary, label:'AI Review'}, {lib:'FA5', name:'download', bg:C.green50, color:C.green600, label:'Download'}] },
-      { id: 2, type: 'word',  iconColor: C.blue600,   iconBg: C.blue100,   name: 'Contract Amendment - Final.docx',      case: 'Mitchell Corp. Dispute',     caseId: 'CV-2024-0892', size: '1.8 MB', date: '11:15 AM', priority: false, avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', client: 'Sarah Mitchell',  tag: 'Contract',       tagColor: C.blue600,   tagBg: C.blue50,   actions: [{lib:'FA5', name:'eye', bg:C.purple50, color:C.purple600, label:'View'}, {lib:'FA5', name:'share-alt', bg:C.green50, color:C.green600, label:'Share'}] },
-      { id: 3, type: 'image', iconColor: C.teal600,   iconBg: C.teal100,   name: 'Accident_Scene_Photo_01.jpg',          case: 'Williams Injury Claim',      caseId: 'PI-2024-0678', size: '3.2 MB', date: '9:05 AM',  priority: false, avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', client: 'J. Williams',     tag: 'Evidence',       tagColor: C.teal600,   tagBg: C.teal50,   actions: [{lib:'FA5', name:'search-plus', bg:C.blue50, color:C.primary, label:'Preview'}] },
-    ]
-  },
-  // ── YESTERDAY ──
-  {
-    group: "Yesterday — March 5, 2026",
-    items: [
-      { id: 4, type: 'excel', iconColor: C.green600,  iconBg: C.green100,  name: 'Evidence Log - Updated.xlsx',          case: 'State vs. Johnson',          caseId: 'CR-2024-1247', size: '856 KB', date: '4:45 PM',  priority: false, avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', client: 'Marcus Johnson',   tag: 'Evidence',       tagColor: C.green600,  tagBg: C.green50,  actions: [{lib:'FA5', name:'download', bg:C.green50, color:C.green600, label:'Download'}] },
-      { id: 5, type: 'pdf',   iconColor: C.red600,    iconBg: C.red100,    name: 'Court Filing - Case Summary.pdf',       case: 'Davis Employment',           caseId: 'EM-2024-0345', size: '1.1 MB', date: '2:00 PM',  priority: true,  avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', client: 'Thomas Davis',    tag: 'Filing',         tagColor: C.orange600, tagBg: C.orange50, actions: [{lib:'FA5', name:'robot', bg:C.blue50, color:C.primary, label:'Summarize'}, {lib:'FA5', name:'download', bg:C.green50, color:C.green600, label:'Download'}] },
-      { id: 6, type: 'word',  iconColor: C.blue600,   iconBg: C.blue100,   name: 'Estate Distribution Plan v2.docx',     case: 'Chen Estate Planning',       caseId: 'FM-2024-0453', size: '2.2 MB', date: '10:30 AM', priority: false, avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', client: 'Robert Chen',     tag: 'Planning',       tagColor: C.blue600,   tagBg: C.blue50,   actions: [{lib:'FA5', name:'eye', bg:C.purple50, color:C.purple600, label:'View'}, {lib:'FA5', name:'edit', bg:C.amber50, color:C.amber600, label:'Edit'}] },
-    ]
-  },
-  // ── THIS WEEK ──
-  {
-    group: "This Week",
-    items: [
-      { id: 7, type: 'pdf',   iconColor: C.red600,    iconBg: C.red100,    name: 'Property Title Search Report.pdf',     case: 'Thompson Real Estate',       caseId: 'RE-2024-0234', size: '4.7 MB', date: 'Mar 4',    priority: false, avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-9.jpg', client: 'M. Thompson',     tag: 'Report',         tagColor: C.red600,    tagBg: C.red50,    actions: [{lib:'FA5', name:'robot', bg:C.blue50, color:C.primary, label:'AI Review'}, {lib:'FA5', name:'download', bg:C.green50, color:C.green600, label:'Download'}] },
-      { id: 8, type: 'excel', iconColor: C.green600,  iconBg: C.green100,  name: 'Invoice Tracker Q1 2026.xlsx',         case: 'All Cases',                  caseId: 'ADMIN',        size: '512 KB', date: 'Mar 3',    priority: false, avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg', client: 'Admin',           tag: 'Finance',        tagColor: C.green600,  tagBg: C.green50,  actions: [{lib:'FA5', name:'download', bg:C.green50, color:C.green600, label:'Download'}] },
-      { id: 9, type: 'image', iconColor: C.teal600,   iconBg: C.teal100,   name: 'Witness_Statement_Scan.jpg',           case: 'State vs. Johnson',          caseId: 'CR-2024-1247', size: '1.9 MB', date: 'Mar 3',    priority: true,  avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', client: 'Marcus Johnson',   tag: 'Evidence',       tagColor: C.teal600,   tagBg: C.teal50,   actions: [{lib:'FA5', name:'search-plus', bg:C.blue50, color:C.primary, label:'Preview'}, {lib:'FA5', name:'robot', bg:C.purple50, color:C.purple600, label:'OCR'}] },
-      { id: 10, type: 'word', iconColor: C.blue600,   iconBg: C.blue100,   name: 'Mediation Agreement Draft.docx',       case: 'Davis Employment',           caseId: 'EM-2024-0345', size: '988 KB', date: 'Mar 2',    priority: false, avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', client: 'Thomas Davis',    tag: 'Agreement',      tagColor: C.blue600,   tagBg: C.blue50,   actions: [{lib:'FA5', name:'eye', bg:C.purple50, color:C.purple600, label:'View'}, {lib:'FA5', name:'share-alt', bg:C.green50, color:C.green600, label:'Share'}] },
-    ]
-  },
-];
+const groupByDate = (docs) => {
+  const today     = new Date(); today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const weekAgo   = new Date(today); weekAgo.setDate(today.getDate() - 7);
 
-const FILE_ICONS = {
-  pdf:   { lib: 'FA5', name: 'file-pdf'   },
-  word:  { lib: 'FA5', name: 'file-word'  },
-  excel: { lib: 'FA5', name: 'file-excel' },
-  image: { lib: 'FA5', name: 'file-image' },
-  other: { lib: 'FA5', name: 'file-alt'   },
+  const groups = { Today: [], Yesterday: [], 'This Week': [], Older: [] };
+  docs.forEach(d => {
+    const dt = new Date(d.created_at);
+    dt.setHours(0, 0, 0, 0);
+    if (dt >= today)          groups['Today'].push(d);
+    else if (dt >= yesterday) groups['Yesterday'].push(d);
+    else if (dt >= weekAgo)   groups['This Week'].push(d);
+    else                      groups['Older'].push(d);
+  });
+  return Object.entries(groups).filter(([, items]) => items.length > 0);
 };
 
 export default function AllDocumentsScreen({ navigation }) {
-  const [activeFilter, setActiveFilter] = useState(0);
-  const [activeSort, setActiveSort]     = useState(0);
-  const [search, setSearch]             = useState('');
+  const [docs,          setDocs]          = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [refreshing,    setRefreshing]    = useState(false);
+  const [activeFilter,  setActiveFilter]  = useState(0);
+  const [search,        setSearch]        = useState('');
 
-  const filtered = DOCS.map(group => ({
-    ...group,
-    items: group.items.filter(d =>
-      d.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.case.toLowerCase().includes(search.toLowerCase()) ||
-      d.client.toLowerCase().includes(search.toLowerCase())
-    ),
-  })).filter(g => g.items.length > 0);
+  // ── Upload state ──────────────────────────────────────────────────────────
+  const [uploadModal,   setUploadModal]   = useState(false);
+  const [cases,         setCases]         = useState([]);
+  const [caseSearch,    setCaseSearch]    = useState('');
+  const [selectedCase,  setSelectedCase]  = useState(null);
+  const [uploading,     setUploading]     = useState(false);
 
-  const totalResults = filtered.reduce((acc, g) => acc + g.items.length, 0);
+  const load = useCallback(async () => {
+    try {
+      const data = await documentsAPI.list();
+      setDocs(data || []);
+    } catch {
+      Alert.alert('Error', 'Could not load documents.');
+    }
+  }, []);
+
+  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  const openUploadModal = async () => {
+    setSelectedCase(null);
+    setCaseSearch('');
+    setUploadModal(true);
+    try {
+      const data = await casesAPI.list();
+      setCases(data || []);
+    } catch {
+      Alert.alert('Error', 'Could not load cases.');
+    }
+  };
+
+  const handlePickAndUpload = async () => {
+    if (!selectedCase) { Alert.alert('Select a case', 'Please select a case before uploading.'); return; }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      const file  = { uri: asset.uri, name: asset.name, mimeType: asset.mimeType };
+      setUploading(true);
+      await documentsAPI.upload(file, selectedCase.id);
+      Alert.alert('Success', `"${asset.name}" uploaded successfully.`);
+      setUploadModal(false);
+      await load();
+    } catch (err) {
+      Alert.alert('Upload Failed', err.message || 'Could not upload the file.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleView = (doc) => {
+    if (!doc.storage_url) { Alert.alert('Unavailable', 'No file URL for this document.'); return; }
+    Linking.openURL(doc.storage_url).catch(() => Alert.alert('Error', 'Could not open the document.'));
+  };
+
+  const filtered = docs.filter(d => {
+    const q = search.toLowerCase();
+    const matchSearch = !q
+      || d.file_name?.toLowerCase().includes(q)
+      || d.case_file?.title?.toLowerCase().includes(q)
+      || d.case_file?.case_number?.toLowerCase().includes(q)
+      || CATEGORY_LABEL[d.category]?.toLowerCase().includes(q);
+
+    if (activeFilter === 1) return matchSearch && (d.file_type || '').toUpperCase() === 'PDF';
+    if (activeFilter === 2) return matchSearch && (d.file_type || '').toUpperCase() === 'WORD';
+    if (activeFilter === 3) return matchSearch && (d.file_type || '').toUpperCase() === 'IMAGE';
+    if (activeFilter === 4) return matchSearch && !['PDF','WORD','IMAGE'].includes((d.file_type||'').toUpperCase());
+    return matchSearch;
+  });
+
+  const groups      = groupByDate(filtered);
+  const totalCount  = docs.length;
+  const thisWeekCount = docs.filter(d => {
+    const dt = new Date(d.created_at);
+    const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+    return dt >= weekAgo;
+  }).length;
+  const totalSizeMb = docs.reduce((acc, d) => acc + (Number(d.file_size_mb) || 0), 0);
+  const sizeLabel   = totalSizeMb >= 1024
+    ? `${(totalSizeMb / 1024).toFixed(1)} GB`
+    : `${totalSizeMb.toFixed(0)} MB`;
 
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.primary} />
 
-      {/* ── HEADER ── */}
+      {/* HEADER */}
       <View style={s.header}>
         <View style={s.headerRow}>
           <TouchableOpacity style={s.backBtn} onPress={() => navigation?.goBack?.()}>
@@ -95,16 +158,17 @@ export default function AllDocumentsScreen({ navigation }) {
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={s.headerTitle}>All Documents</Text>
-            <Text style={s.headerSub}>68 files across all cases</Text>
+            <Text style={s.headerSub}>{totalCount} files across all cases</Text>
           </View>
-          <TouchableOpacity style={s.addBtn}>
-            <FontAwesome5 name="cloud-upload-alt" size={14} color={C.white} />
-          </TouchableOpacity>
         </View>
 
         {/* Stats */}
         <View style={s.statsRow}>
-          {STATS.map((st, i) => (
+          {[
+            { val: totalCount,    label: 'Total',     icon: 'file-alt',     iconBg: C.blue100,   iconColor: C.blue600   },
+            { val: thisWeekCount, label: 'This Week', icon: 'calendar-week',iconBg: C.green100,  iconColor: C.green600  },
+            { val: sizeLabel,     label: 'Storage',   icon: 'hdd',          iconBg: C.purple100, iconColor: C.purple600 },
+          ].map((st, i) => (
             <View key={i} style={s.statItem}>
               <View style={[s.statIconWrap, { backgroundColor: st.iconBg }]}>
                 <FontAwesome5 name={st.icon} size={13} color={st.iconColor} />
@@ -120,7 +184,7 @@ export default function AllDocumentsScreen({ navigation }) {
           <Ionicons name="search-outline" size={16} color="rgba(255,255,255,0.7)" />
           <TextInput
             style={s.searchInput}
-            placeholder="Search documents, cases, clients..."
+            placeholder="Search documents, cases..."
             placeholderTextColor="rgba(255,255,255,0.6)"
             value={search}
             onChangeText={setSearch}
@@ -133,11 +197,11 @@ export default function AllDocumentsScreen({ navigation }) {
         </View>
       </View>
 
-      {/* ── FILTER TABS ── */}
+      {/* FILTER TABS */}
       <ScrollView
         horizontal showsHorizontalScrollIndicator={false}
         style={s.filterBar}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 10 }}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 10, flexDirection: 'row' }}
       >
         {FILTER_TABS.map((t, i) => (
           <TouchableOpacity
@@ -150,185 +214,226 @@ export default function AllDocumentsScreen({ navigation }) {
         ))}
       </ScrollView>
 
-      {/* ── SORT BAR ── */}
-      <View style={s.sortBar}>
-        <Text style={s.sortLabel}>Sort by:</Text>
-        {SORT_OPTIONS.map((opt, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[s.sortChip, activeSort === i && s.sortChipActive]}
-            onPress={() => setActiveSort(i)}
-          >
-            <Text style={[s.sortChipTxt, activeSort === i && s.sortChipTxtActive]}>{opt}</Text>
-          </TouchableOpacity>
-        ))}
-        <View style={{ flex: 1 }} />
-        <Text style={s.resultsCount}>{totalResults} files</Text>
-      </View>
-
-      {/* ── AI BANNER ── */}
-      <View style={s.aiBanner}>
-        <View style={s.aiIconWrap}>
-          <FontAwesome5 name="robot" size={16} color={C.white} />
+      {/* CONTENT */}
+      {loading ? (
+        <View style={s.center}>
+          <ActivityIndicator size="large" color={C.primary} />
         </View>
-        <Text style={s.aiText}>5 documents pending AI review</Text>
-        <TouchableOpacity style={s.aiBtn}>
-          <Text style={s.aiBtnTxt}>Review All</Text>
-        </TouchableOpacity>
-      </View>
+      ) : (
+        <ScrollView
+          style={s.scroll}
+          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[C.primary]} />}
+        >
+          {groups.length === 0 && (
+            <View style={s.empty}>
+              <FontAwesome5 name="folder-open" size={36} color={C.g200} />
+              <Text style={s.emptyTxt}>No documents found</Text>
+            </View>
+          )}
 
-      <ScrollView
-        style={s.scroll}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {filtered.map((group, gi) => (
-          <View key={gi} style={{ marginBottom: 8 }}>
-            {/* Group header */}
-            <View style={s.groupHeader}>
-              <View style={s.groupDot} />
-              <Text style={s.groupTitle}>{group.group}</Text>
-              <Text style={s.groupCount}>{group.items.length} files</Text>
+          {groups.map(([groupLabel, items]) => (
+            <View key={groupLabel} style={{ marginBottom: 8 }}>
+              <View style={s.groupHeader}>
+                <View style={s.groupDot} />
+                <Text style={s.groupTitle}>{groupLabel}</Text>
+                <Text style={s.groupCount}>{items.length} file{items.length > 1 ? 's' : ''}</Text>
+              </View>
+
+              {items.map(doc => (
+                <DocCard key={doc.id} doc={doc} onView={() => handleView(doc)} />
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      )}
+      {/* FAB */}
+      <TouchableOpacity style={s.fab} onPress={openUploadModal} activeOpacity={0.85}>
+        <FontAwesome5 name="cloud-upload-alt" size={18} color={C.white} />
+      </TouchableOpacity>
+
+      {/* Upload Modal */}
+      <Modal visible={uploadModal} animationType="slide" transparent onRequestClose={() => setUploadModal(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalSheet}>
+            {/* Modal header */}
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Upload Document</Text>
+              <TouchableOpacity onPress={() => setUploadModal(false)}>
+                <Ionicons name="close" size={22} color={C.g500} />
+              </TouchableOpacity>
             </View>
 
-            {/* Documents */}
-            {group.items.map((doc) => {
-              const fi = FILE_ICONS[doc.type] || FILE_ICONS.other;
-              return (
-                <View key={doc.id} style={[s.card, doc.priority && s.cardPriority]}>
-                  {doc.priority && (
-                    <View style={s.priorityFlag}>
-                      <FontAwesome5 name="star" size={9} color={C.amber600} solid />
-                    </View>
+            {/* Step 1 — select case */}
+            <Text style={s.modalStep}>1. Select a case</Text>
+            <View style={s.modalSearch}>
+              <Ionicons name="search-outline" size={14} color={C.g400} />
+              <TextInput
+                style={s.modalSearchInput}
+                placeholder="Search cases..."
+                placeholderTextColor={C.g400}
+                value={caseSearch}
+                onChangeText={setCaseSearch}
+              />
+            </View>
+
+            <FlatList
+              data={cases.filter(c =>
+                !caseSearch ||
+                c.title?.toLowerCase().includes(caseSearch.toLowerCase()) ||
+                c.case_number?.toLowerCase().includes(caseSearch.toLowerCase())
+              )}
+              keyExtractor={c => c.id}
+              style={s.caseList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[s.caseItem, selectedCase?.id === item.id && s.caseItemActive]}
+                  onPress={() => setSelectedCase(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[s.caseItemDot, { backgroundColor: selectedCase?.id === item.id ? C.primary : C.g200 }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.caseItemTitle, selectedCase?.id === item.id && { color: C.primary }]} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    {item.case_number ? (
+                      <Text style={s.caseItemNum}>{item.case_number}</Text>
+                    ) : null}
+                  </View>
+                  {selectedCase?.id === item.id && (
+                    <FontAwesome5 name="check-circle" size={14} color={C.primary} />
                   )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={<Text style={s.caseListEmpty}>No cases found</Text>}
+            />
 
-                  {/* Top row */}
-                  <View style={s.cardTop}>
-                    <View style={[s.docIconWrap, { backgroundColor: doc.iconBg }]}>
-                      <FontAwesome5 name={fi.name} size={22} color={doc.iconColor} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={s.docName} numberOfLines={1}>{doc.name}</Text>
-                      <Text style={s.docCase}>{doc.case}</Text>
-                      <View style={s.metaRow}>
-                        <Text style={s.metaTxt}>{doc.size}</Text>
-                        <Text style={s.metaDot}>·</Text>
-                        <Text style={s.metaTxt}>{doc.date}</Text>
-                        <View style={[s.docTag, { backgroundColor: doc.tagBg }]}>
-                          <Text style={[s.docTagTxt, { color: doc.tagColor }]}>{doc.tag}</Text>
-                        </View>
-                      </View>
-                    </View>
-                    <TouchableOpacity style={s.moreBtn}>
-                      <FontAwesome5 name="ellipsis-v" size={13} color={C.g400} />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Footer */}
-                  <View style={s.cardFooter}>
-                    <View style={s.clientRow}>
-                      <Image source={{ uri: doc.avatar }} style={s.avatar} />
-                      <View style={{ marginLeft: 8 }}>
-                        <Text style={s.clientName}>{doc.client}</Text>
-                        <Text style={s.caseId}>{doc.caseId}</Text>
-                      </View>
-                    </View>
-                    <View style={s.actionsRow}>
-                      {doc.actions.map((a, ai) => (
-                        <TouchableOpacity key={ai} style={[s.actionBtn, { backgroundColor: a.bg }]}>
-                          {a.lib === 'FA5'
-                            ? <FontAwesome5 name={a.name} size={11} color={a.color} />
-                            : <FontAwesome name={a.name} size={11} color={a.color} />}
-                          <Text style={[s.actionBtnTxt, { color: a.color }]}>{a.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
+            {/* Step 2 — pick file */}
+            <Text style={s.modalStep}>2. Choose a file</Text>
+            <TouchableOpacity
+              style={[s.uploadBtn, (!selectedCase || uploading) && { opacity: 0.5 }]}
+              onPress={handlePickAndUpload}
+              disabled={!selectedCase || uploading}
+              activeOpacity={0.8}
+            >
+              {uploading
+                ? <ActivityIndicator size="small" color={C.white} />
+                : <FontAwesome5 name="cloud-upload-alt" size={15} color={C.white} />}
+              <Text style={s.uploadBtnTxt}>{uploading ? 'Uploading…' : 'Pick & Upload File'}</Text>
+            </TouchableOpacity>
           </View>
-        ))}
-
-        {/* Upload CTA */}
-        <TouchableOpacity style={s.uploadCta}>
-          <FontAwesome5 name="cloud-upload-alt" size={20} color={C.primary} />
-          <Text style={s.uploadCtaTxt}>Upload New Document</Text>
-          <FontAwesome5 name="arrow-right" size={12} color={C.primary} />
-        </TouchableOpacity>
-      </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
+function DocCard({ doc, onView }) {
+  const fs        = getFileStyle(doc.file_type);
+  const caseName  = doc.case_file?.title || doc.case_file?.case_number || null;
+  const category  = CATEGORY_LABEL[doc.category] || doc.category || null;
+  const size      = doc.file_size_mb ? `${Number(doc.file_size_mb).toFixed(1)} MB` : null;
+  const dateLabel = doc.created_at
+    ? new Date(doc.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : null;
+
+  return (
+    <View style={s.card}>
+      {/* Top */}
+      <View style={s.cardTop}>
+        <View style={[s.docIconWrap, { backgroundColor: fs.bg }]}>
+          <FontAwesome5 name={fs.icon} size={22} color={fs.color} />
+        </View>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={s.docName} numberOfLines={1}>{doc.file_name}</Text>
+          {caseName ? (
+            <View style={s.caseRow}>
+              <FontAwesome5 name="briefcase" size={9} color={C.g400} />
+              <Text style={s.docCase} numberOfLines={1}>{caseName}</Text>
+            </View>
+          ) : null}
+          <View style={s.metaRow}>
+            {size ? <Text style={s.metaTxt}>{size}</Text> : null}
+            {size && dateLabel ? <Text style={s.metaDot}>·</Text> : null}
+            {dateLabel ? <Text style={s.metaTxt}>{dateLabel}</Text> : null}
+          </View>
+        </View>
+      </View>
+
+      {/* Footer */}
+      <View style={s.cardFooter}>
+        <View style={[s.typePill, { backgroundColor: fs.bg }]}>
+          <FontAwesome5 name={fs.icon} size={9} color={fs.color} />
+          <Text style={[s.typePillTxt, { color: fs.color }]}>{(doc.file_type || 'File').toUpperCase()}</Text>
+        </View>
+        <TouchableOpacity style={s.viewBtn} onPress={onView} activeOpacity={0.7}>
+          <FontAwesome5 name="eye" size={11} color={C.purple600} />
+          <Text style={s.viewBtnTxt}>View</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: C.primary },
-  scroll: { flex: 1, backgroundColor: C.g50 },
-  header: { backgroundColor: C.primary, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '800', color: C.white },
-  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 1 },
-  addBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 16, paddingVertical: 12, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
-  statItem: { alignItems: 'center', gap: 3 },
-  statIconWrap: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  statVal: { fontSize: 15, fontWeight: '800', color: C.white },
-  statLabel: { fontSize: 10, color: 'rgba(255,255,255,0.72)' },
-
-  searchWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
-  searchInput: { flex: 1, color: C.white, fontSize: 13 },
-
-  filterBar: { backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.g200, maxHeight: 52, flexGrow: 0 },
-  filterTab: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 12, backgroundColor: C.g100 },
-  filterTabActive: { backgroundColor: C.primary },
-  filterTabTxt: { fontSize: 12, fontWeight: '600', color: C.g600 },
-  filterTabTxtActive: { color: C.white },
-
-  sortBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.g100, gap: 6 },
-  sortLabel: { fontSize: 12, color: C.g500, marginRight: 2 },
-  sortChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: C.g100 },
-  sortChipActive: { backgroundColor: C.blue50, borderWidth: 1, borderColor: C.primary },
-  sortChipTxt: { fontSize: 11, fontWeight: '600', color: C.g600 },
-  sortChipTxtActive: { color: C.primary },
-  resultsCount: { fontSize: 12, color: C.g400 },
-
-  aiBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EEF2FF', paddingHorizontal: 16, paddingVertical: 10, gap: 10, borderBottomWidth: 1, borderBottomColor: '#C7D2FE' },
-  aiIconWrap: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center' },
-  aiText: { flex: 1, fontSize: 13, fontWeight: '600', color: '#3730A3' },
-  aiBtn: { backgroundColor: '#4F46E5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  aiBtnTxt: { fontSize: 12, fontWeight: '700', color: C.white },
-
-  groupHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
-  groupDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.primary },
-  groupTitle: { fontSize: 13, fontWeight: '700', color: C.dark, flex: 1 },
-  groupCount: { fontSize: 11, color: C.g400 },
-
-  card: { backgroundColor: C.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2, borderWidth: 1, borderColor: C.g100, marginBottom: 10, position: 'relative' },
-  cardPriority: { borderColor: C.amber600, borderWidth: 1.5 },
-  priorityFlag: { position: 'absolute', top: 10, right: 10, width: 22, height: 22, borderRadius: 11, backgroundColor: C.amber50, alignItems: 'center', justifyContent: 'center' },
-
-  cardTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
-  docIconWrap: { width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  docName: { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 2 },
-  docCase: { fontSize: 12, color: C.g500, marginBottom: 5 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  metaTxt: { fontSize: 11, color: C.g400 },
-  metaDot: { fontSize: 11, color: C.g400 },
-  docTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 },
-  docTagTxt: { fontSize: 10, fontWeight: '700' },
-  moreBtn: { padding: 6 },
-
-  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 1, borderTopColor: C.g100 },
-  clientRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 26, height: 26, borderRadius: 13 },
-  clientName: { fontSize: 12, fontWeight: '700', color: C.dark },
-  caseId: { fontSize: 10, color: C.primary, fontWeight: '600' },
-  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 },
-  actionBtnTxt: { fontSize: 11, fontWeight: '600' },
-
-  uploadCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 16, borderWidth: 2, borderStyle: 'dashed', borderColor: C.primary, backgroundColor: C.blue50, marginTop: 4 },
-  uploadCtaTxt: { fontSize: 14, fontWeight: '700', color: C.primary },
+  safe:              { flex: 1, backgroundColor: C.primary },
+  scroll:            { flex: 1, backgroundColor: C.g50 },
+  header:            { backgroundColor: C.primary, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
+  headerRow:         { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  backBtn:           { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  headerTitle:       { fontSize: 17, fontWeight: '800', color: C.white },
+  headerSub:         { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 1 },
+  statsRow:          { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 16, paddingVertical: 12, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  statItem:          { alignItems: 'center', gap: 3 },
+  statIconWrap:      { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  statVal:           { fontSize: 15, fontWeight: '800', color: C.white },
+  statLabel:         { fontSize: 10, color: 'rgba(255,255,255,0.72)' },
+  searchWrap:        { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
+  searchInput:       { flex: 1, color: C.white, fontSize: 13 },
+  filterBar:         { backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.g200, maxHeight: 52, flexGrow: 0 },
+  filterTab:         { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 12, backgroundColor: C.g100 },
+  filterTabActive:   { backgroundColor: C.primary },
+  filterTabTxt:      { fontSize: 12, fontWeight: '600', color: C.g600 },
+  filterTabTxtActive:{ color: C.white },
+  center:            { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.g50 },
+  empty:             { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 12 },
+  emptyTxt:          { fontSize: 14, color: C.g400, fontWeight: '600' },
+  groupHeader:       { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
+  groupDot:          { width: 8, height: 8, borderRadius: 4, backgroundColor: C.primary },
+  groupTitle:        { fontSize: 13, fontWeight: '700', color: C.dark, flex: 1 },
+  groupCount:        { fontSize: 11, color: C.g400 },
+  card:              { backgroundColor: C.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2, borderWidth: 1, borderColor: C.g100, marginBottom: 10 },
+  cardTop:           { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+  docIconWrap:       { width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  docName:           { fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 4 },
+  caseRow:           { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  docCase:           { fontSize: 11, color: C.g500, flex: 1 },
+  metaRow:           { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  metaTxt:           { fontSize: 11, color: C.g400 },
+  metaDot:           { fontSize: 11, color: C.g400 },
+  catTag:            { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 },
+  catTagTxt:         { fontSize: 10, fontWeight: '700' },
+  cardFooter:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 1, borderTopColor: C.g100 },
+  typePill:          { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  typePillTxt:       { fontSize: 10, fontWeight: '700' },
+  viewBtn:           { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.purple50, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  viewBtnTxt:        { fontSize: 12, fontWeight: '700', color: C.purple600 },
+  fab:               { position: 'absolute', bottom: 28, right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', shadowColor: C.primary, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  modalOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalSheet:        { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
+  modalHeader:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  modalTitle:        { fontSize: 17, fontWeight: '800', color: C.dark },
+  modalStep:         { fontSize: 13, fontWeight: '700', color: C.g600, marginBottom: 10 },
+  modalSearch:       { flexDirection: 'row', alignItems: 'center', backgroundColor: C.g50, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: C.g200, gap: 8, marginBottom: 10 },
+  modalSearchInput:  { flex: 1, fontSize: 13, color: C.dark },
+  caseList:          { maxHeight: 220, marginBottom: 20 },
+  caseItem:          { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, marginBottom: 4, backgroundColor: C.g50, borderWidth: 1, borderColor: 'transparent' },
+  caseItemActive:    { backgroundColor: C.blue50, borderColor: C.primary },
+  caseItemDot:       { width: 10, height: 10, borderRadius: 5 },
+  caseItemTitle:     { fontSize: 13, fontWeight: '600', color: C.dark },
+  caseItemNum:       { fontSize: 11, color: C.g400, marginTop: 1 },
+  caseListEmpty:     { textAlign: 'center', color: C.g400, paddingVertical: 20, fontSize: 13 },
+  uploadBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14 },
+  uploadBtnTxt:      { fontSize: 14, fontWeight: '700', color: C.white },
 });
