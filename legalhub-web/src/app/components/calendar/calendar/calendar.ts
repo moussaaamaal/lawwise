@@ -456,7 +456,7 @@ export class Calendar implements OnInit {
     'CASE-2024-012 — Davis Employment',
   ];
 
-  teamMembers = ['David Morrison', 'Sarah Williams', 'Michael Chen', 'Jennifer Lopez', 'Robert Taylor', 'Amanda Foster'];
+  teamMembers = ['Sarah Williams', 'Michael Chen', 'Jennifer Lopez', 'Robert Taylor', 'Amanda Foster'];
 
   reminderOptions = [
     { value: '0',    label: 'No reminder' },

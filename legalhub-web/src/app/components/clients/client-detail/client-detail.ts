@@ -50,7 +50,7 @@ export class ClientDetail implements OnInit {
   cases = [
     { title:'Johnson vs. State Corp', type:'Civil Litigation', typeBg:'bg-blue-100', typeColor:'text-blue-700', desc:'Employment discrimination case - Discovery phase', attorney:'Sarah Williams', filed:'Jan 15, 2024', next:'Next Hearing: Nov 16', nextIcon:'fa-gavel', statusLabel:'In Progress', statusBg:'bg-amber-100', statusColor:'text-amber-700', progress:65, progressColor:'bg-amber-500', docs:24 },
     { title:'Estate Planning - Johnson Family Trust', type:'Estate Law', typeBg:'bg-green-100', typeColor:'text-green-700', desc:'Comprehensive estate planning and trust establishment', attorney:'Michael Chen', filed:'Mar 20, 2024', next:'Review: Nov 25', nextIcon:'fa-check', statusLabel:'Review', statusBg:'bg-blue-100', statusColor:'text-blue-700', progress:85, progressColor:'bg-green-500', docs:18 },
-    { title:'Real Estate Transaction - Commercial Property', type:'Real Estate', typeBg:'bg-purple-100', typeColor:'text-purple-700', desc:'Commercial property acquisition and contract review', attorney:'David Morrison', filed:'Aug 10, 2024', next:'Closing: Dec 5', nextIcon:'fa-file-signature', statusLabel:'Due Diligence', statusBg:'bg-green-100', statusColor:'text-green-700', progress:45, progressColor:'bg-purple-500', docs:32 },
+    { title:'Real Estate Transaction - Commercial Property', type:'Real Estate', typeBg:'bg-purple-100', typeColor:'text-purple-700', desc:'Commercial property acquisition and contract review', attorney:'Michael Chen', filed:'Aug 10, 2024', next:'Closing: Dec 5', nextIcon:'fa-file-signature', statusLabel:'Due Diligence', statusBg:'bg-green-100', statusColor:'text-green-700', progress:45, progressColor:'bg-purple-500', docs:32 },
   ];
 
   documents = [
@@ -72,20 +72,20 @@ export class ClientDetail implements OnInit {
   communications = [
     { iconBg:'bg-blue-100',   icon:'fa-solid fa-envelope', iconColor:'text-blue-600',   title:'Email Sent: Case Update',                 by:'Sent by Sarah Williams',                              when:'2 hours ago', body:'Updated client on discovery progress. Discussed upcoming hearing preparation and witness list.', tag:'Email',     tagBg:'bg-blue-100 text-blue-700',   case:'Johnson vs. State Corp' },
     { iconBg:'bg-green-100',  icon:'fa-solid fa-phone',    iconColor:'text-green-600',  title:'Phone Call: Trust Agreement Discussion',  by:'Call with Michael Chen - Duration: 45 minutes',      when:'Yesterday',   body:'Discussed beneficiary designations and trust provisions. Client requested modifications.',        tag:'Phone Call', tagBg:'bg-green-100 text-green-700', case:'Estate Planning' },
-    { iconBg:'bg-purple-100', icon:'fa-solid fa-users',    iconColor:'text-purple-600', title:'In-Person Meeting: Property Acquisition', by:'Meeting with David Morrison - Office Conference Room',when:'2 days ago',  body:'Reviewed purchase agreement for commercial property. Client approved terms.',                   tag:'In-Person', tagBg:'bg-purple-100 text-purple-700',case:'Real Estate Transaction' },
+    { iconBg:'bg-purple-100', icon:'fa-solid fa-users',    iconColor:'text-purple-600', title:'In-Person Meeting: Property Acquisition', by:'Meeting with Michael Chen - Office Conference Room',  when:'2 days ago',  body:'Reviewed purchase agreement for commercial property. Client approved terms.',                   tag:'In-Person', tagBg:'bg-purple-100 text-purple-700',case:'Real Estate Transaction' },
     { iconBg:'bg-amber-100',  icon:'fa-solid fa-file-alt', iconColor:'text-amber-600',  title:'Document Received: Evidence Submission',  by:'Received from client via email',                      when:'3 days ago',  body:'Client submitted additional workplace documentation and witness contact information.',           tag:'Document',  tagBg:'bg-amber-100 text-amber-700', case:'Johnson vs. State Corp' },
   ];
 
   notes = [
     { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', author:'Sarah Williams', when:'3 hours ago', body:'Client is very detail-oriented and prefers frequent updates. Responds quickly to emails.', tagBg:'bg-blue-100 text-blue-700',   tag:'Client Management' },
     { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', author:'Michael Chen',   when:'Yesterday',   body:'Client has complex estate planning needs with multiple business interests.', tagBg:'bg-green-100 text-green-700',  tag:'Estate Planning' },
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg', author:'David Morrison', when:'2 days ago',  body:'Client is considering additional commercial property investments.',             tagBg:'bg-purple-100 text-purple-700', tag:'Business Development' },
+    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', author:'Michael Chen',   when:'2 days ago',  body:'Client is considering additional commercial property investments.',             tagBg:'bg-purple-100 text-purple-700', tag:'Business Development' },
   ];
 
   timeline = [
     { bg:'bg-blue-500',   icon:'fa-solid fa-file-upload',   title:'Documents Uploaded',     desc:'Sarah Williams uploaded 3 files',                    when:'2 hours ago',  tagBg:'bg-blue-100 text-blue-700',    tag:'Documents' },
     { bg:'bg-green-500',  icon:'fa-solid fa-check',         title:'Payment Received',        desc:'Invoice INV-2867 paid - $8,500.00',                   when:'Yesterday',    tagBg:'bg-green-100 text-green-700',  tag:'Payment' },
-    { bg:'bg-purple-500', icon:'fa-solid fa-users',         title:'Meeting Completed',       desc:'In-person meeting with David Morrison',               when:'2 days ago',   tagBg:'bg-purple-100 text-purple-700',tag:'Meeting' },
+    { bg:'bg-purple-500', icon:'fa-solid fa-users',         title:'Meeting Completed',       desc:'In-person meeting with Michael Chen',                 when:'2 days ago',   tagBg:'bg-purple-100 text-purple-700',tag:'Meeting' },
     { bg:'bg-amber-500',  icon:'fa-solid fa-calendar-plus', title:'Hearing Scheduled',       desc:'Court hearing scheduled for November 16, 2024',       when:'3 days ago',   tagBg:'bg-amber-100 text-amber-700',  tag:'Calendar' },
     { bg:'bg-red-500',    icon:'fa-solid fa-briefcase',     title:'Case Created',            desc:'New case opened: Real Estate Transaction',            when:'1 week ago',   tagBg:'bg-red-100 text-red-700',      tag:'Case' },
     { bg:'bg-indigo-500', icon:'fa-solid fa-user-plus',     title:'Client Profile Created',  desc:'Client added as new client',                          when:'',             tagBg:'bg-indigo-100 text-indigo-700',tag:'Client' },
@@ -94,7 +94,7 @@ export class ClientDetail implements OnInit {
   team = [
     { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', border:'border-blue-500',   name:'Sarah Williams',  role:'Lead Attorney' },
     { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', border:'border-green-500',  name:'Michael Chen',    role:'Estate Attorney' },
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg', border:'border-purple-500', name:'David Morrison',  role:'Real Estate Attorney' },
+    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', border:'border-purple-500', name:'Michael Chen',    role:'Real Estate Attorney' },
     { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-9.jpg', border:'border-gray-300',   name:'Jessica Martinez',role:'Paralegal' },
   ];
 
@@ -109,7 +109,7 @@ export class ClientDetail implements OnInit {
   editStep      = signal<1|2|3>(1);
   isSaving      = signal(false);
 
-  attorneys   = ['Sarah Williams','Michael Chen','David Morrison','Jennifer Lopez','Robert Taylor'];
+  attorneys   = ['Sarah Williams','Michael Chen','Jennifer Lopez','Robert Taylor'];
   clientTypes = ['Premium Client','Standard Client','VIP Client','Corporate Client'];
   statusList  = ['Active','Pending','Inactive'];
 

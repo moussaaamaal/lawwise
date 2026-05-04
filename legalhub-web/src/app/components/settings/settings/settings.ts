@@ -120,7 +120,6 @@ export class Settings {
 
   // ── Team Members ─────────────────────────────────────────
   teamMembers: TeamMember[] = [
-    { avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg', avatarBorder: 'border-blue-500',   name: 'David Morrison', id: 'EMP-001', roleCls: 'bg-blue-100 text-blue-700',    roleLabel: 'Senior Partner', email: 'd.morrison@morrisonlaw.com', cases: '8',  statusCls: 'bg-green-100 text-green-700',  statusLabel: 'Active',  lastActive: '2 hours ago' },
     { avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', avatarBorder: 'border-green-500',  name: 'Sarah Williams', id: 'EMP-002', roleCls: 'bg-green-100 text-green-700',  roleLabel: 'Associate',      email: 's.williams@morrisonlaw.com', cases: '12', statusCls: 'bg-green-100 text-green-700',  statusLabel: 'Active',  lastActive: '30 mins ago' },
     { avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', avatarBorder: 'border-green-500',  name: 'Michael Chen',   id: 'EMP-003', roleCls: 'bg-blue-100 text-blue-700',    roleLabel: 'Senior Partner', email: 'm.chen@morrisonlaw.com',     cases: '6',  statusCls: 'bg-green-100 text-green-700',  statusLabel: 'Active',  lastActive: '1 hour ago' },
     { avatar: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', avatarBorder: 'border-green-500',  name: 'Jennifer Lopez', id: 'EMP-004', roleCls: 'bg-purple-100 text-purple-700',roleLabel: 'Secretary',      email: 'j.lopez@morrisonlaw.com',    cases: '-',  statusCls: 'bg-green-100 text-green-700',  statusLabel: 'Active',  lastActive: '3 hours ago' },
@@ -164,7 +163,7 @@ export class Settings {
   auditLog          = signal(true);
 
   securityEvents = [
-    { icon: 'fa-solid fa-right-to-bracket', iconBg: 'bg-green-100', iconColor: 'text-green-600', title: 'Successful Login', user: 'David Morrison', when: '2 min ago', ip: '192.168.1.45' },
+    { icon: 'fa-solid fa-right-to-bracket', iconBg: 'bg-green-100', iconColor: 'text-green-600', title: 'Successful Login', user: 'Sarah Williams', when: '2 min ago', ip: '192.168.1.45' },
     { icon: 'fa-solid fa-shield-halved',    iconBg: 'bg-blue-100',  iconColor: 'text-blue-600',  title: '2FA Verified',     user: 'Sarah Williams', when: '15 min ago', ip: '10.0.0.12' },
     { icon: 'fa-solid fa-triangle-exclamation', iconBg: 'bg-red-100', iconColor: 'text-red-600', title: 'Failed Login Attempt', user: 'Unknown',     when: '1 hour ago', ip: '203.0.113.42' },
     { icon: 'fa-solid fa-key',              iconBg: 'bg-amber-100', iconColor: 'text-amber-600', title: 'Password Changed', user: 'Michael Chen',   when: '3 hours ago', ip: '192.168.1.88' },

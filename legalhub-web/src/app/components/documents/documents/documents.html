@@ -22,7 +22,7 @@
         <span class="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
       </button>
       <div class="h-8 w-px bg-gray-300"></div>
-      <button (click)="upload.open()"
+      <button (click)="openUpload()"
         class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
         <i class="fa-solid fa-upload"></i><span class="font-medium">Upload Files</span>
       </button>
@@ -59,28 +59,55 @@
     </div>
   </section>
 
-  <!-- WEB-DOC-01 STATS -->
+  <!-- ERROR BANNER -->
+  @if (error()) {
+    <section class="px-8 pb-4">
+      <div class="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-center space-x-3">
+        <i class="fa-solid fa-circle-exclamation text-red-500"></i>
+        <span class="text-sm text-red-700">{{ error() }}</span>
+        <button (click)="error.set(null)" class="ml-auto text-red-400 hover:text-red-600">
+          <i class="fa-solid fa-times"></i>
+        </button>
+      </div>
+    </section>
+  }
+
+  <!-- STATS — computed from real data -->
   <section class="px-8 pb-6">
-    <div class="grid grid-cols-5 gap-5">
-      @for (s of stats; track s.label) {
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
-          <div class="flex items-start justify-between mb-3">
-            <div class="w-11 h-11 rounded-lg flex items-center justify-center" [ngClass]="s.iconBg">
-              <i class="text-lg" [ngClass]="[s.icon, s.iconColor]"></i>
+    @if (loading()) {
+      <div class="grid grid-cols-5 gap-5">
+        @for (_ of [1,2,3,4,5]; track $index) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 animate-pulse">
+            <div class="w-11 h-11 bg-gray-200 rounded-lg mb-3"></div>
+            <div class="h-7 bg-gray-200 rounded w-16 mb-1"></div>
+            <div class="h-4 bg-gray-100 rounded w-24"></div>
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="grid grid-cols-5 gap-5">
+        @for (s of stats(); track s.label) {
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-3">
+              <div class="w-11 h-11 rounded-lg flex items-center justify-center" [ngClass]="s.iconBg">
+                <i class="text-lg" [ngClass]="[s.icon, s.iconColor]"></i>
+              </div>
+              @if (s.badge) {
+                <span class="text-xs px-2 py-1 rounded-full font-medium" [ngClass]="s.badgeColor">{{ s.badge }}</span>
+              }
             </div>
-            <span class="text-xs px-2 py-1 rounded-full font-medium" [ngClass]="s.badgeColor">{{ s.badge }}</span>
+            <h3 class="text-2xl font-bold text-gray-900 mb-0.5">{{ s.value }}</h3>
+            <p class="text-sm text-gray-600">{{ s.label }}</p>
+            <div class="mt-3 pt-3 border-t border-gray-100">
+              <p class="text-xs text-gray-500">{{ s.note }}</p>
+            </div>
           </div>
-          <h3 class="text-2xl font-bold text-gray-900 mb-0.5">{{ s.value }}</h3>
-          <p class="text-sm text-gray-600">{{ s.label }}</p>
-          <div class="mt-3 pt-3 border-t border-gray-100">
-            <p class="text-xs text-gray-500">{{ s.note }}</p>
-          </div>
-        </div>
-      }
-    </div>
+        }
+      </div>
+    }
   </section>
 
-  <!-- WEB-DOC-02 + WEB-DOC-06 QUICK UPLOAD ZONE -->
+  <!-- QUICK UPLOAD ZONE -->
   <section class="px-8 pb-6">
     <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl shadow-lg p-8">
       <div class="flex items-center space-x-4 mb-6">
@@ -93,31 +120,31 @@
         </div>
       </div>
       <div class="grid grid-cols-5 gap-4">
-        <button (click)="upload.openPdf()"
+        <button (click)="openUpload('.pdf')"
           class="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 transition-all text-left group">
           <i class="fa-solid fa-file-pdf text-red-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
           <p class="text-white font-medium text-sm">Upload PDF</p>
           <p class="text-xs text-slate-400">Legal documents</p>
         </button>
-        <button (click)="upload.openWord()"
+        <button (click)="openUpload('.doc,.docx')"
           class="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 transition-all text-left group">
           <i class="fa-solid fa-file-word text-blue-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
           <p class="text-white font-medium text-sm">Upload Word</p>
           <p class="text-xs text-slate-400">Contracts, letters</p>
         </button>
-        <button (click)="upload.openImage()"
+        <button (click)="openUpload('.jpg,.jpeg,.png,.gif,.webp')"
           class="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 transition-all text-left group">
           <i class="fa-solid fa-file-image text-purple-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
           <p class="text-white font-medium text-sm">Upload Images</p>
           <p class="text-xs text-slate-400">Evidence, photos</p>
         </button>
-        <button (click)="upload.openFolder()"
+        <button (click)="openUpload()"
           class="bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 transition-all text-left group">
           <i class="fa-solid fa-folder text-amber-400 text-2xl mb-2 block group-hover:scale-110 transition-transform"></i>
           <p class="text-white font-medium text-sm">Upload Folder</p>
           <p class="text-xs text-slate-400">Bulk upload</p>
         </button>
-        <!-- WEB-DOC-06 Voice Note -->
+        <!-- Voice Note -->
         @if (!isRecording()) {
           <button (click)="startRecording()"
             class="bg-pink-900 hover:bg-pink-800 border border-pink-700 rounded-lg p-4 transition-all text-left group">
@@ -138,7 +165,7 @@
     </div>
   </section>
 
-  <!-- WEB-DOC-04 BULK AI BAR -->
+  <!-- BULK AI BAR -->
   @if (showBulkBar()) {
     <section class="px-8 pb-3">
       <div class="bg-purple-900 rounded-xl px-6 py-4 flex items-center justify-between shadow-lg border border-purple-700">
@@ -167,7 +194,7 @@
     </section>
   }
 
-  <!-- WEB-DOC-09 BROWSE + FILTERS -->
+  <!-- BROWSE + FILTERS -->
   <section class="px-8 pb-6">
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <div class="flex items-center justify-between mb-5">
@@ -250,11 +277,11 @@
     </div>
   </section>
 
-  <!-- FOLDER STRUCTURE -->
+  <!-- FOLDER STRUCTURE — grouped by case -->
   @if (activeFilter() === 'all' || activeFilter() === 'by-case') {
     <section class="px-8 pb-6">
       <div class="grid grid-cols-4 gap-5">
-        @for (folder of folders; track folder.name) {
+        @for (folder of folders(); track folder.caseId) {
           <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-all cursor-pointer group">
             <div class="flex items-start justify-between mb-4">
               <div class="w-14 h-14 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform" [ngClass]="folder.folderBg">
@@ -270,17 +297,19 @@
               <span><i class="fa-solid fa-file mr-1"></i>{{ folder.files }}</span>
               <span>{{ folder.size }}</span>
             </div>
-            <div class="mt-3 pt-3 border-t border-gray-100 flex items-center space-x-2">
-              <img [src]="folder.avatar" alt="" class="w-5 h-5 rounded-full">
-              <span class="text-xs text-gray-600">{{ folder.owner }}</span>
-            </div>
+          </div>
+        }
+        @if (folders().length === 0 && !loading()) {
+          <div class="col-span-4 py-8 text-center text-gray-500 text-sm">
+            <i class="fa-solid fa-folder-open text-gray-300 text-3xl mb-2 block"></i>
+            No folders yet — upload documents to a case to see them here.
           </div>
         }
       </div>
     </section>
   }
 
-  <!-- DOCUMENTS TABLE — WEB-DOC-05 + 06 + 08 -->
+  <!-- DOCUMENTS TABLE -->
   <section class="px-8 pb-6">
     <div class="bg-white rounded-xl shadow-sm border border-gray-200">
       <div class="p-6 border-b border-gray-200 flex items-center justify-between">
@@ -322,10 +351,36 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
-            @for (doc of filteredDocuments(); track doc.name) {
-              <tr class="hover:bg-gray-50 transition-colors" [ngClass]="isSelected(doc.name) ? 'bg-amber-50' : ''">
+            <!-- Loading skeleton -->
+            @if (loading()) {
+              @for (_ of [1,2,3]; track $index) {
+                <tr class="animate-pulse">
+                  <td class="px-5 py-4"><div class="w-4 h-4 bg-gray-200 rounded"></div></td>
+                  <td class="px-5 py-4">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                      <div>
+                        <div class="h-4 bg-gray-200 rounded w-40 mb-1"></div>
+                        <div class="h-3 bg-gray-100 rounded w-24"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
+                  <td class="px-5 py-4"><div class="h-6 bg-gray-200 rounded-full w-12"></div></td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-24"></div></td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
+                  <td class="px-5 py-4"><div class="h-6 bg-gray-200 rounded-full w-20"></div></td>
+                  <td class="px-5 py-4"><div class="h-4 bg-gray-200 rounded w-20 ml-auto"></div></td>
+                </tr>
+              }
+            }
+
+            <!-- Real rows -->
+            @for (doc of filteredDocuments(); track doc.id) {
+              <tr class="hover:bg-gray-50 transition-colors" [ngClass]="isSelected(doc.id) ? 'bg-amber-50' : ''">
                 <td class="px-5 py-4">
-                  <input type="checkbox" [checked]="isSelected(doc.name)" (change)="toggleDoc(doc.name)" class="rounded border-gray-300 accent-amber-500">
+                  <input type="checkbox" [checked]="isSelected(doc.id)" (change)="toggleDoc(doc.id)" class="rounded border-gray-300 accent-amber-500">
                 </td>
                 <td class="px-5 py-4">
                   <div class="flex items-center space-x-3">
@@ -337,7 +392,6 @@
                       <p class="text-xs text-gray-500">{{ doc.desc }}</p>
                       @if (doc.isVoiceNote) {
                         <div class="flex items-center space-x-2 mt-1">
-                          <span class="text-xs text-gray-500"><i class="fa-solid fa-clock mr-1"></i>{{ doc.duration }}</span>
                           @if (doc.transcribed) {
                             <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
                               <i class="fa-solid fa-check mr-1"></i>Transcribed
@@ -361,13 +415,19 @@
                 <td class="px-5 py-4"><p class="text-sm text-gray-900">{{ doc.size }}</p></td>
                 <td class="px-5 py-4">
                   <div class="flex items-center space-x-2">
-                    <img [src]="doc.avatar" alt="" class="w-6 h-6 rounded-full">
+                    @if (doc.avatar) {
+                      <img [src]="doc.avatar" alt="" class="w-6 h-6 rounded-full">
+                    } @else {
+                      <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                        <i class="fa-solid fa-user text-gray-400 text-xs"></i>
+                      </div>
+                    }
                     <span class="text-sm text-gray-900 whitespace-nowrap">{{ doc.uploader }}</span>
                   </div>
                 </td>
                 <td class="px-5 py-4"><p class="text-sm text-gray-500">{{ doc.modified }}</p></td>
 
-                <!-- WEB-DOC-05 Status + quick approve/reject -->
+                <!-- Status + quick approve/reject -->
                 <td class="px-5 py-4">
                   <span class="text-xs px-2.5 py-1 rounded-full font-medium flex items-center space-x-1 w-fit whitespace-nowrap"
                     [ngClass]="getStatusCls(doc.status)">
@@ -376,11 +436,11 @@
                   </span>
                   @if (doc.status === 'Pending Review') {
                     <div class="flex items-center space-x-1 mt-1.5">
-                      <button (click)="approveDoc(doc.name)"
+                      <button (click)="approveDoc(doc.id)"
                         class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors font-medium">
                         <i class="fa-solid fa-check mr-1"></i>Approve
                       </button>
-                      <button (click)="rejectDoc(doc.name)"
+                      <button (click)="rejectDoc(doc.id)"
                         class="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors font-medium">
                         <i class="fa-solid fa-times mr-1"></i>Reject
                       </button>
@@ -388,35 +448,32 @@
                   }
                 </td>
 
-                <!-- WEB-DOC-08 Actions -->
+                <!-- Actions -->
                 <td class="px-5 py-4 text-right">
                   <div class="flex items-center justify-end space-x-1">
-                    <button class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View">
+                    <button (click)="viewDoc(doc)" class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View">
                       <i class="fa-solid fa-eye text-sm"></i>
                     </button>
-                    <button class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Download">
+                    <button (click)="downloadDoc(doc)" class="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Download">
                       <i class="fa-solid fa-download text-sm"></i>
                     </button>
-                    <button class="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Share">
+                    <button (click)="shareDoc(doc.id)" class="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Share with client">
                       <i class="fa-solid fa-share text-sm"></i>
                     </button>
-                    <!-- WEB-DOC-08 Link to Case -->
-                    <button class="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Link to Case">
-                      <i class="fa-solid fa-link text-sm"></i>
-                    </button>
                     @if (!doc.isVoiceNote) {
-                      <button class="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="AI Summarize">
+                      <button (click)="aiSummarizeDoc(doc.id)" class="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="AI Summarize">
                         <i class="fa-solid fa-robot text-sm"></i>
                       </button>
                     }
-                    <button class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                    <button (click)="deleteDoc(doc.id)" class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                       <i class="fa-solid fa-trash text-sm"></i>
                     </button>
                   </div>
                 </td>
               </tr>
             }
-            @if (filteredDocuments().length === 0) {
+
+            @if (!loading() && filteredDocuments().length === 0) {
               <tr>
                 <td colspan="9" class="px-6 py-16 text-center">
                   <div class="flex flex-col items-center">
@@ -435,11 +492,11 @@
     </div>
   </section>
 
-  <!-- WEB-DOC-03 AI CATEGORIES + WEB-DOC-07 STORAGE -->
+  <!-- AI CATEGORIES + STORAGE -->
   <section class="px-8 pb-8">
     <div class="grid grid-cols-3 gap-6">
 
-      <!-- AI Categories -->
+      <!-- AI Categories — computed from real docs -->
       <div class="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
         <div class="p-6 border-b border-gray-200 flex items-center justify-between">
           <div>
@@ -452,7 +509,7 @@
         </div>
         <div class="p-6">
           <div class="grid grid-cols-5 gap-4">
-            @for (cat of categories; track cat.label) {
+            @for (cat of categories(); track cat.label) {
               <div class="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all cursor-pointer text-center group">
                 <div class="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform" [ngClass]="cat.iconBg">
                   <i class="text-xl" [ngClass]="[cat.icon, cat.iconColor]"></i>
@@ -469,11 +526,11 @@
         </div>
       </div>
 
-      <!-- WEB-DOC-07 Storage Tracker -->
+      <!-- Storage Tracker — computed from real doc sizes -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
         <div class="p-6 border-b border-gray-200">
           <h2 class="text-lg font-bold text-gray-900">Storage Usage</h2>
-          <p class="text-sm text-gray-600 mt-0.5">Per tenant — WEB-DOC-07</p>
+          <p class="text-sm text-gray-600 mt-0.5">Based on uploaded documents</p>
         </div>
         <div class="p-6 flex-1 flex flex-col justify-between">
           <div class="text-center mb-6">
@@ -491,7 +548,7 @@
                 <span class="text-xs text-gray-500">used</span>
               </div>
             </div>
-            <p class="text-3xl font-bold text-gray-900">{{ storageUsed }} <span class="text-lg font-normal text-gray-500">GB</span></p>
+            <p class="text-3xl font-bold text-gray-900">{{ storageUsedGB() }} <span class="text-lg font-normal text-gray-500">GB</span></p>
             <p class="text-sm text-gray-500 mt-1">of {{ storageTotal }} GB available</p>
           </div>
           <div>
@@ -499,33 +556,10 @@
               <div class="h-full rounded-full transition-all duration-500"
                 [ngClass]="storageColor.bar" [style.width.%]="storagePercent"></div>
             </div>
-            <div class="space-y-2.5">
-              <div class="flex items-center justify-between text-sm">
-                <span class="flex items-center space-x-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>
-                  <span class="text-gray-600">Documents</span>
-                </span>
-                <span class="font-semibold text-gray-900">142 GB</span>
-              </div>
-              <div class="flex items-center justify-between text-sm">
-                <span class="flex items-center space-x-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block"></span>
-                  <span class="text-gray-600">Evidence</span>
-                </span>
-                <span class="font-semibold text-gray-900">68 GB</span>
-              </div>
-              <div class="flex items-center justify-between text-sm">
-                <span class="flex items-center space-x-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
-                  <span class="text-gray-600">Audio / Video</span>
-                </span>
-                <span class="font-semibold text-gray-900">24 GB</span>
-              </div>
-            </div>
             <div class="mt-4 pt-4 border-t border-gray-100">
               <div class="flex items-center justify-between">
                 <span class="text-sm text-gray-600">Remaining</span>
-                <span class="text-sm font-bold" [ngClass]="storageColor.text">{{ storageTotal - storageUsed }} GB free</span>
+                <span class="text-sm font-bold" [ngClass]="storageColor.text">{{ storageTotal - storageUsedGB() }} GB free</span>
               </div>
               <button class="mt-3 w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                 <i class="fa-solid fa-arrow-up-right-dots mr-2 text-amber-500"></i>Upgrade Storage

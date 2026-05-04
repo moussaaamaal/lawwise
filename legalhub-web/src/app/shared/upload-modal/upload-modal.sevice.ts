@@ -26,31 +26,41 @@ export class UploadModalService {
   description       = signal('');
   files             = signal<UploadedFile[]>([]);
 
-  // ── Real-upload callbacks (set by openForCase) ────────
+  // ── Real-upload callbacks ─────────────────────────────────
   uploadFn      = signal<((file: File) => Promise<void>) | null>(null);
   afterUploadFn = signal<(() => void) | null>(null);
 
+  // When true: case is pre-locked (openForCase mode), hide dropdown
+  caseLocked = signal(false);
+
   // ── Lookups ──────────────────────────────────────────────
-  readonly cases = [
-    'Johnson vs. State Corporation',
-    'Martinez Family Trust',
-    'Thompson Real Estate Deal',
-    'Anderson Employment Case',
-    'Wilson Medical Malpractice',
-    'Greenfield Corporate Merger',
-  ];
+  // Populated dynamically via setCases(); empty by default
+  cases: string[] = [];
+  private _caseIds: string[] = [];
+
   readonly categories = [
     'Contracts', 'Pleadings', 'Depositions', 'Financial',
     'Evidence', 'Medical', 'Correspondence', 'Court Orders', 'Other',
   ];
   readonly attorneys = [
-    'Sarah Williams', 'Michael Chen', 'David Morrison',
+    'Sarah Williams', 'Michael Chen',
     'Jennifer Lopez', 'Robert Taylor',
   ];
 
   // ── Accept filter per upload type ────────────────────────
   private _acceptFilter = signal('*');
   get acceptFilter() { return this._acceptFilter(); }
+
+  // ── Case helpers ──────────────────────────────────────────
+  setCases(list: { id: string; name: string }[]): void {
+    this.cases    = list.map(c => c.name);
+    this._caseIds = list.map(c => c.id);
+  }
+
+  getSelectedCaseId(): string {
+    const idx = this.cases.indexOf(this.selectedCase());
+    return idx >= 0 ? this._caseIds[idx] : '';
+  }
 
   // ── Open helpers ─────────────────────────────────────────
   open(accept = '*') {
@@ -63,6 +73,7 @@ export class UploadModalService {
     this.isUploading.set(false);
     this.isDone.set(false);
     this.isDragging.set(false);
+    this.caseLocked.set(false);
     this.uploadFn.set(null);
     this.afterUploadFn.set(null);
     this.showModal.set(true);
@@ -78,6 +89,24 @@ export class UploadModalService {
     this.isUploading.set(false);
     this.isDone.set(false);
     this.isDragging.set(false);
+    this.caseLocked.set(true);
+    this.uploadFn.set(fn);
+    this.afterUploadFn.set(afterFn ?? null);
+    this.showModal.set(true);
+  }
+
+  // Opens modal with case dropdown + real upload function
+  openWithUpload(accept: string, fn: (file: File) => Promise<void>, afterFn?: () => void) {
+    this._acceptFilter.set(accept);
+    this.selectedCase.set('');
+    this.selectedCategory.set('');
+    this.selectedAttorney.set('');
+    this.description.set('');
+    this.files.set([]);
+    this.isUploading.set(false);
+    this.isDone.set(false);
+    this.isDragging.set(false);
+    this.caseLocked.set(false);
     this.uploadFn.set(fn);
     this.afterUploadFn.set(afterFn ?? null);
     this.showModal.set(true);
@@ -110,7 +139,7 @@ export class UploadModalService {
   }
 
   private formatSize(bytes: number): string {
-    if (bytes < 1024)       return bytes + ' B';
+    if (bytes < 1024)        return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
@@ -132,7 +161,7 @@ export class UploadModalService {
   }
 
   get isValid() {
-    return this.files().length > 0 && (this.selectedCase() !== '' || this.uploadFn() !== null);
+    return this.files().length > 0 && this.selectedCase() !== '';
   }
 
   async upload() {
@@ -157,6 +186,7 @@ export class UploadModalService {
       const afterFn = this.afterUploadFn();
       if (afterFn) afterFn();
     } else {
+      // Fake animation fallback
       const total = this.files().length;
       let completed = 0;
       this.files().forEach((_, idx) => {

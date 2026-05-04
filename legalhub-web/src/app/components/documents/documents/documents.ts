@@ -1,28 +1,46 @@
-import { Component, signal, computed, inject } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { UploadModalService } from '../../../shared/upload-modal/upload-modal.sevice';
 import { UploadModal } from '../../../shared/upload-modal/upload-modal';
+import { DocumentService, RawDoc } from '../../../services/document.service';
+import { CaseService } from '../../../services/case.service';
+import { AuthService } from '../../../services/auth.service';
 
-// WEB-DOC-05 — document status workflow
 type DocStatus = 'Pending Review' | 'Approved' | 'Rejected';
 
 interface DocFile {
-  name: string; desc: string; case: string; type: string;
-  typeBg: string; typeColor: string; iconBg: string; icon: string;
-  iconColor: string; size: string; avatar: string; uploader: string;
-  modified: string;
-  // WEB-DOC-05
-  status: DocStatus;
-  // WEB-DOC-06
-  isVoiceNote?: boolean;
-  duration?: string;        // ex: "2:34"
-  transcribed?: boolean;
+  id:          string;
+  name:        string;
+  desc:        string;
+  case:        string;
+  caseId:      string;
+  type:        string;
+  typeBg:      string;
+  typeColor:   string;
+  iconBg:      string;
+  icon:        string;
+  iconColor:   string;
+  size:        string;
+  fileSizeMb:  number;
+  avatar:      string;
+  uploader:    string;
+  modified:    string;
+  status:      DocStatus;
+  isVoiceNote: boolean;
+  transcribed: boolean;
+  storageUrl:  string;
+  rawCategory: string;
 }
 
 interface Folder {
-  name: string; type: string; files: string; size: string;
-  avatar: string; owner: string; folderBg: string; folderColor: string;
+  caseId:      string;
+  name:        string;
+  type:        string;
+  files:       string;
+  size:        string;
+  folderBg:    string;
+  folderColor: string;
 }
 
 @Component({
@@ -31,71 +49,124 @@ interface Folder {
   imports: [NgClass, FormsModule, UploadModal],
   templateUrl: './documents.html',
 })
-export class Documents {
-  upload = inject(UploadModalService);
+export class Documents implements OnInit {
+  upload      = inject(UploadModalService);
+  private docService  = inject(DocumentService);
+  private caseService = inject(CaseService);
+  private auth        = inject(AuthService);
 
-  searchQuery   = signal('');
-  // WEB-DOC-09 — filters aligned to spec
-  activeFilter  = signal<'all' | 'by-case' | 'pending' | 'approved' | 'voice-notes'>('all');
-  viewMode      = signal<'grid' | 'list'>('list');
+  searchQuery  = signal('');
+  activeFilter = signal<'all' | 'by-case' | 'pending' | 'approved' | 'voice-notes'>('all');
+  viewMode     = signal<'grid' | 'list'>('list');
+  loading      = signal(false);
+  error        = signal<string | null>(null);
 
-  // WEB-DOC-05 — bulk selection for AI summarize
-  selectedDocs  = signal<Set<string>>(new Set());
-  showBulkBar   = computed(() => this.selectedDocs().size > 0);
+  selectedDocs = signal<Set<string>>(new Set());
+  showBulkBar  = computed(() => this.selectedDocs().size > 0);
 
-  // WEB-DOC-06 — voice recording state
   isRecording   = signal(false);
   recordSeconds = signal(0);
   private _recInterval: any;
 
-  // Filter labels → WEB-DOC-09
+  private _docs = signal<DocFile[]>([]);
+
   filters: { key: 'all'|'by-case'|'pending'|'approved'|'voice-notes'; label: string; icon: string }[] = [
-    { key:'all',         label:'All Files',      icon:'fa-solid fa-layer-group' },
-    { key:'by-case',     label:'By Case',        icon:'fa-solid fa-briefcase' },
-    { key:'pending',     label:'Pending Review', icon:'fa-solid fa-clock' },
-    { key:'approved',    label:'Approved',       icon:'fa-solid fa-circle-check' },
-    { key:'voice-notes', label:'Voice Notes',    icon:'fa-solid fa-microphone' },
+    { key: 'all',         label: 'All Files',      icon: 'fa-solid fa-layer-group' },
+    { key: 'by-case',     label: 'By Case',        icon: 'fa-solid fa-briefcase' },
+    { key: 'pending',     label: 'Pending Review', icon: 'fa-solid fa-clock' },
+    { key: 'approved',    label: 'Approved',       icon: 'fa-solid fa-circle-check' },
+    { key: 'voice-notes', label: 'Voice Notes',    icon: 'fa-solid fa-microphone' },
   ];
 
-  // WEB-DOC-01 — stats
-  stats = [
-    { icon:'fa-solid fa-folder',   iconBg:'bg-blue-100',   iconColor:'text-blue-600',   value:'247',    label:'Total Folders',   badge:'+8',     badgeColor:'text-green-600 bg-green-100',   note:'24 cases organized' },
-    { icon:'fa-solid fa-file',     iconBg:'bg-purple-100', iconColor:'text-purple-600', value:'3,847',  label:'Total Documents', badge:'+142',   badgeColor:'text-green-600 bg-green-100',   note:'142 added this month' },
-    { icon:'fa-solid fa-robot',    iconBg:'bg-amber-100',  iconColor:'text-amber-600',  value:'1,284',  label:'AI Summaries',    badge:'AI',     badgeColor:'text-purple-600 bg-purple-100', note:'Auto-generated' },
-    { icon:'fa-solid fa-hourglass-half', iconBg:'bg-orange-100', iconColor:'text-orange-600', value:'38', label:'Pending Review', badge:'Review', badgeColor:'text-orange-600 bg-orange-100', note:'Awaiting approval' },
-    { icon:'fa-solid fa-microphone', iconBg:'bg-pink-100', iconColor:'text-pink-600',   value:'24',     label:'Voice Notes',     badge:'New',    badgeColor:'text-pink-600 bg-pink-100',     note:'12 transcribed' },
-  ];
+  // ── Computed stats from real data ─────────────────────────
+  stats = computed(() => {
+    const docs       = this._docs();
+    const uniqueCases = new Set(docs.map(d => d.caseId)).size;
+    const pending    = docs.filter(d => d.status === 'Pending Review').length;
+    const voiceNotes = docs.filter(d => d.isVoiceNote).length;
+    return [
+      { icon: 'fa-solid fa-folder',         iconBg: 'bg-blue-100',   iconColor: 'text-blue-600',   value: String(uniqueCases), label: 'Total Folders',   badge: '',       badgeColor: 'text-green-600 bg-green-100',   note: `${uniqueCases} case${uniqueCases !== 1 ? 's' : ''} organized` },
+      { icon: 'fa-solid fa-file',           iconBg: 'bg-purple-100', iconColor: 'text-purple-600', value: String(docs.length), label: 'Total Documents', badge: '',       badgeColor: 'text-green-600 bg-green-100',   note: 'All uploaded files' },
+      { icon: 'fa-solid fa-robot',          iconBg: 'bg-amber-100',  iconColor: 'text-amber-600',  value: '—',                 label: 'AI Summaries',    badge: 'AI',     badgeColor: 'text-purple-600 bg-purple-100', note: 'Auto-generated' },
+      { icon: 'fa-solid fa-hourglass-half', iconBg: 'bg-orange-100', iconColor: 'text-orange-600', value: String(pending),     label: 'Pending Review',  badge: 'Review', badgeColor: 'text-orange-600 bg-orange-100', note: 'Awaiting approval' },
+      { icon: 'fa-solid fa-microphone',     iconBg: 'bg-pink-100',   iconColor: 'text-pink-600',   value: String(voiceNotes),  label: 'Voice Notes',     badge: 'New',    badgeColor: 'text-pink-600 bg-pink-100',     note: 'AI transcribed' },
+    ];
+  });
 
-  folders: Folder[] = [
-    { name:'Johnson vs. State Corp',  type:'Civil Litigation',     files:'127 files', size:'12.4 GB', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', owner:'Sarah Williams',  folderBg:'bg-blue-100',   folderColor:'text-blue-600' },
-    { name:'Martinez Family Trust',   type:'Estate Law',            files:'89 files',  size:'8.7 GB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', owner:'Michael Chen',    folderBg:'bg-green-100',  folderColor:'text-green-600' },
-    { name:'Thompson Real Estate',    type:'Real Estate Law',       files:'64 files',  size:'5.2 GB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg', owner:'David Morrison',  folderBg:'bg-amber-100',  folderColor:'text-amber-600' },
-    { name:'Anderson Employment',     type:'Employment Law',        files:'52 files',  size:'4.1 GB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', owner:'Jennifer Lopez',  folderBg:'bg-purple-100', folderColor:'text-purple-600' },
-    { name:'Wilson Medical Case',     type:'Medical Malpractice',   files:'98 files',  size:'11.3 GB', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', owner:'Robert Taylor',   folderBg:'bg-red-100',    folderColor:'text-red-600' },
-    { name:'Greenfield Industries',   type:'Corporate Law',         files:'143 files', size:'18.9 GB', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', owner:'Emily Rodriguez', folderBg:'bg-indigo-100', folderColor:'text-indigo-600' },
-    { name:'Davis Divorce Case',      type:'Family Law',            files:'76 files',  size:'6.8 GB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-7.jpg', owner:'Lisa Anderson',   folderBg:'bg-pink-100',   folderColor:'text-pink-600' },
-    { name:'Parker IP Portfolio',     type:'Intellectual Property', files:'211 files', size:'22.6 GB', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-9.jpg', owner:'James Wilson',    folderBg:'bg-teal-100',   folderColor:'text-teal-600' },
-  ];
+  // ── Folders grouped by case ───────────────────────────────
+  folders = computed(() => {
+    const docs   = this._docs();
+    const cases  = this.caseService.cases();
+    const colors = [
+      { bg: 'bg-blue-100',   color: 'text-blue-600' },
+      { bg: 'bg-green-100',  color: 'text-green-600' },
+      { bg: 'bg-amber-100',  color: 'text-amber-600' },
+      { bg: 'bg-purple-100', color: 'text-purple-600' },
+      { bg: 'bg-red-100',    color: 'text-red-600' },
+      { bg: 'bg-indigo-100', color: 'text-indigo-600' },
+      { bg: 'bg-pink-100',   color: 'text-pink-600' },
+      { bg: 'bg-teal-100',   color: 'text-teal-600' },
+    ];
+    const map = new Map<string, { count: number; totalMb: number }>();
+    for (const doc of docs) {
+      const e = map.get(doc.caseId) ?? { count: 0, totalMb: 0 };
+      e.count++;
+      e.totalMb += doc.fileSizeMb;
+      map.set(doc.caseId, e);
+    }
+    return Array.from(map.entries()).map(([caseId, data], i) => {
+      const c   = cases.find(c => c.id === caseId);
+      const col = colors[i % colors.length];
+      return {
+        caseId,
+        name:        c?.title ?? `Case ${caseId.slice(0, 8)}`,
+        type:        c?.type  ?? 'Case',
+        files:       `${data.count} file${data.count !== 1 ? 's' : ''}`,
+        size:        this._fmtSize(data.totalMb),
+        folderBg:    col.bg,
+        folderColor: col.color,
+      } as Folder;
+    });
+  });
 
-  // WEB-DOC-03, 05, 06 — documents with status + voice notes
-  allDocuments: DocFile[] = [
-    { name:'Contract_Amendment_Final_v3.pdf',   desc:'Legal contract document',  case:'Johnson vs. State Corp', type:'PDF',  typeBg:'bg-red-100',    typeColor:'text-red-700',    iconBg:'bg-red-100',    icon:'fa-solid fa-file-pdf',    iconColor:'text-red-600',    size:'2.4 MB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', uploader:'Sarah Williams',  modified:'2 hours ago',  status:'Pending Review' },
-    { name:'Witness_Statement_Deposition.docx', desc:'Testimony transcript',     case:'Martinez Family Trust',  type:'DOCX', typeBg:'bg-blue-100',   typeColor:'text-blue-700',   iconBg:'bg-blue-100',   icon:'fa-solid fa-file-word',   iconColor:'text-blue-600',   size:'1.8 MB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', uploader:'Michael Chen',    modified:'4 hours ago',  status:'Approved' },
-    { name:'Financial_Analysis_Q3_2024.xlsx',   desc:'Financial breakdown',      case:'Thompson Real Estate',   type:'XLSX', typeBg:'bg-green-100',  typeColor:'text-green-700',  iconBg:'bg-green-100',  icon:'fa-solid fa-file-excel',  iconColor:'text-green-600',  size:'3.2 MB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg', uploader:'David Morrison',  modified:'6 hours ago',  status:'Approved' },
-    { name:'Medical_Records_Confidential.pdf',  desc:'Protected health info',    case:'Wilson Medical Case',    type:'PDF',  typeBg:'bg-red-100',    typeColor:'text-red-700',    iconBg:'bg-red-100',    icon:'fa-solid fa-file-pdf',    iconColor:'text-red-600',    size:'8.7 MB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', uploader:'Robert Taylor',   modified:'1 day ago',    status:'Pending Review' },
-    { name:'Corporate_Bylaws_Amendment.docx',   desc:'Legal document draft',     case:'Greenfield Industries',  type:'DOCX', typeBg:'bg-blue-100',   typeColor:'text-blue-700',   iconBg:'bg-blue-100',   icon:'fa-solid fa-file-word',   iconColor:'text-blue-600',   size:'4.1 MB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', uploader:'Emily Rodriguez', modified:'1 day ago',    status:'Rejected' },
-    { name:'Evidence_Photos_Bundle.zip',        desc:'Photographic evidence',    case:'Anderson Employment',    type:'ZIP',  typeBg:'bg-amber-100',  typeColor:'text-amber-700',  iconBg:'bg-amber-100',  icon:'fa-solid fa-file-zipper', iconColor:'text-amber-600',  size:'24.6 MB', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', uploader:'Jennifer Lopez',  modified:'2 days ago',   status:'Approved' },
-    { name:'Court_Hearing_Notes_Nov14.pdf',     desc:'Court proceedings notes',  case:'Johnson vs. State Corp', type:'PDF',  typeBg:'bg-red-100',    typeColor:'text-red-700',    iconBg:'bg-red-100',    icon:'fa-solid fa-file-pdf',    iconColor:'text-red-600',    size:'1.1 MB',  avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', uploader:'Sarah Williams',  modified:'3 days ago',   status:'Pending Review' },
-    // WEB-DOC-06 — voice notes
-    { name:'Client_Interview_Martinez.m4a',     desc:'Voice note — auto-transcribed', case:'Martinez Family Trust', type:'AUDIO', typeBg:'bg-pink-100', typeColor:'text-pink-700', iconBg:'bg-pink-100', icon:'fa-solid fa-microphone', iconColor:'text-pink-600', size:'4.8 MB', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', uploader:'Michael Chen',   modified:'5 hours ago',  status:'Approved', isVoiceNote:true, duration:'3:42', transcribed:true },
-    { name:'Deposition_Prep_Notes.m4a',         desc:'Voice note — pending transcription', case:'Wilson Medical Case', type:'AUDIO', typeBg:'bg-pink-100', typeColor:'text-pink-700', iconBg:'bg-pink-100', icon:'fa-solid fa-microphone', iconColor:'text-pink-600', size:'2.3 MB', avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', uploader:'Robert Taylor',  modified:'Yesterday',    status:'Pending Review', isVoiceNote:true, duration:'1:58', transcribed:false },
-  ];
+  // ── Categories computed from real docs ────────────────────
+  categories = computed(() => {
+    const docs  = this._docs();
+    const total = docs.length || 1;
+    const defs = [
+      { key: 'CONTRACT',   icon: 'fa-solid fa-file-contract', iconBg: 'bg-red-100',    iconColor: 'text-red-600',    label: 'Contracts',        unit: 'documents' },
+      { key: 'COURT_DOC',  icon: 'fa-solid fa-gavel',         iconBg: 'bg-blue-100',   iconColor: 'text-blue-600',   label: 'Court Documents',  unit: 'documents' },
+      { key: 'EVIDENCE',   icon: 'fa-solid fa-image',         iconBg: 'bg-purple-100', iconColor: 'text-purple-600', label: 'Evidence',         unit: 'files' },
+      { key: 'FINANCIAL',  icon: 'fa-solid fa-file-invoice',  iconBg: 'bg-amber-100',  iconColor: 'text-amber-600',  label: 'Financial Docs',   unit: 'documents' },
+      { key: 'CLIENT_DOC', icon: 'fa-solid fa-user',          iconBg: 'bg-green-100',  iconColor: 'text-green-600',  label: 'Client Documents', unit: 'documents' },
+    ];
+    return defs.map(d => {
+      const count = docs.filter(doc => doc.rawCategory === d.key).length;
+      return { ...d, count: String(count), pct: Math.round((count / total) * 100) };
+    });
+  });
 
-  // WEB-DOC-09 — filter computed
+  // ── Storage computed from real doc sizes ──────────────────
+  storageTotal  = 350; // GB plan limit
+  storageUsedGB = computed(() => {
+    const mb = this._docs().reduce((s, d) => s + d.fileSizeMb, 0);
+    return parseFloat((mb / 1024).toFixed(2));
+  });
+  get storagePercent(): number {
+    return Math.round((this.storageUsedGB() / this.storageTotal) * 100);
+  }
+  get storageColor(): { bar: string; text: string; badge: string } {
+    const p = this.storagePercent;
+    if (p >= 85) return { bar: 'bg-red-500',   text: 'text-red-600',   badge: 'text-red-600 bg-red-100' };
+    if (p >= 65) return { bar: 'bg-amber-500', text: 'text-amber-600', badge: 'text-amber-600 bg-amber-100' };
+    return             { bar: 'bg-green-500', text: 'text-green-600', badge: 'text-green-600 bg-green-100' };
+  }
+
+  // ── Filtered documents ────────────────────────────────────
   filteredDocuments = computed(() => {
     const f = this.activeFilter();
     const q = this.searchQuery().toLowerCase();
-    let docs = this.allDocuments;
+    let docs = this._docs();
     if (f === 'pending')     docs = docs.filter(d => d.status === 'Pending Review');
     if (f === 'approved')    docs = docs.filter(d => d.status === 'Approved');
     if (f === 'voice-notes') docs = docs.filter(d => d.isVoiceNote);
@@ -103,63 +174,183 @@ export class Documents {
     return docs;
   });
 
-  // WEB-DOC-05 — counts for filter badges
-  get pendingCount() { return this.allDocuments.filter(d => d.status === 'Pending Review').length; }
-  get approvedCount() { return this.allDocuments.filter(d => d.status === 'Approved').length; }
-  get voiceCount()   { return this.allDocuments.filter(d => d.isVoiceNote).length; }
-
-  // WEB-DOC-03 — AI categories (simplified per spec)
-  categories = [
-    { icon:'fa-solid fa-file-contract',  iconBg:'bg-red-100',    iconColor:'text-red-600',    label:'Contracts',          count:'487', unit:'documents', pct: 25 },
-    { icon:'fa-solid fa-gavel',          iconBg:'bg-blue-100',   iconColor:'text-blue-600',   label:'Court Documents',    count:'413', unit:'documents', pct: 21 },
-    { icon:'fa-solid fa-image',          iconBg:'bg-purple-100', iconColor:'text-purple-600', label:'Evidence',           count:'892', unit:'files',      pct: 46 },
-    { icon:'fa-solid fa-file-invoice',   iconBg:'bg-amber-100',  iconColor:'text-amber-600',  label:'Financial Docs',     count:'276', unit:'documents', pct: 14 },
-    { icon:'fa-solid fa-user',           iconBg:'bg-green-100',  iconColor:'text-green-600',  label:'Client Documents',   count:'654', unit:'documents', pct: 34 },
-  ];
-
-  // WEB-DOC-07 — storage tracker
-  storageUsed   = 234;   // GB
-  storageTotal  = 350;   // GB
-  get storagePercent() { return Math.round((this.storageUsed / this.storageTotal) * 100); }
-  get storageColor()   {
-    const p = this.storagePercent;
-    if (p >= 85) return { bar:'bg-red-500', text:'text-red-600', badge:'text-red-600 bg-red-100' };
-    if (p >= 65) return { bar:'bg-amber-500', text:'text-amber-600', badge:'text-amber-600 bg-amber-100' };
-    return { bar:'bg-green-500', text:'text-green-600', badge:'text-green-600 bg-green-100' };
+  get pendingCount():  number { return this._docs().filter(d => d.status === 'Pending Review').length; }
+  get voiceCount():    number { return this._docs().filter(d => d.isVoiceNote).length; }
+  get allSelected():   boolean {
+    const docs = this.filteredDocuments();
+    return docs.length > 0 && docs.every(d => this.selectedDocs().has(d.id));
   }
 
-  // ── Selection helpers (WEB-DOC-04) ───────────────────────
-  toggleDoc(name: string): void {
+  // ── Init ──────────────────────────────────────────────────
+  async ngOnInit(): Promise<void> {
+    await Promise.all([
+      this.caseService.loadCases(),
+      this._loadDocuments(),
+    ]);
+    this._wireUpload();
+  }
+
+  private async _loadDocuments(): Promise<void> {
+    this.loading.set(true);
+    this.error.set(null);
+    try {
+      const raw   = await this.docService.listDocuments();
+      const cases = this.caseService.cases();
+      const user  = this.auth.currentUser();
+      this._docs.set(raw.map(r => this._mapDoc(r, cases, user)));
+    } catch (e: any) {
+      this.error.set(e?.error?.detail ?? e?.message ?? 'Failed to load documents');
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  private _wireUpload(): void {
+    this.upload.setCases(this.caseService.cases().map(c => ({ id: c.id, name: c.title })));
+  }
+
+  // Upload wrappers that set the real upload function each time
+  openUpload(accept = '*'): void {
+    this.upload.openWithUpload(accept, async (file: File) => {
+      const caseId = this.upload.getSelectedCaseId();
+      if (!caseId) throw new Error('Please select a case');
+      const raw   = await this.docService.uploadFile(file, caseId);
+      const cases = this.caseService.cases();
+      const user  = this.auth.currentUser();
+      this._docs.update(docs => [this._mapDoc(raw, cases, user), ...docs]);
+    });
+  }
+
+  // ── Document mapper ───────────────────────────────────────
+  private _mapDoc(raw: RawDoc, cases: any[], user: any): DocFile {
+    const isVoice   = raw.category === 'VOICE_TRANSCRIPT';
+    const style     = this.docService.getTypeStyle(isVoice ? 'OTHER' : raw.file_type);
+    const caseTitle = cases.find(c => c.id === raw.case_id)?.title ?? `Case ${raw.case_id?.slice(0, 8) ?? ''}`;
+    const isMine    = !!user && user.id === raw.uploaded_by;
+
+    return {
+      id:          raw.id,
+      name:        raw.file_name,
+      desc:        this._catDesc(raw.category),
+      case:        caseTitle,
+      caseId:      raw.case_id,
+      type:        isVoice ? 'AUDIO' : raw.file_type,
+      typeBg:      isVoice ? 'bg-pink-100'           : style.typeBg,
+      typeColor:   isVoice ? 'text-pink-700'         : style.typeColor,
+      iconBg:      isVoice ? 'bg-pink-100'           : style.iconBg,
+      icon:        isVoice ? 'fa-solid fa-microphone': style.icon,
+      iconColor:   isVoice ? 'text-pink-600'         : style.iconColor,
+      size:        `${(raw.file_size_mb ?? 0).toFixed(1)} MB`,
+      fileSizeMb:  raw.file_size_mb ?? 0,
+      avatar:      isMine ? (user.avatar ?? '') : '',
+      uploader:    isMine ? (user.name ?? 'Me') : 'Staff Member',
+      modified:    this.docService.timeAgo(raw.created_at),
+      status:      this._mapStatus(raw.status),
+      isVoiceNote: isVoice,
+      transcribed: isVoice && raw.status === 'APPROVED',
+      storageUrl:  raw.storage_url,
+      rawCategory: raw.category,
+    };
+  }
+
+  private _mapStatus(s: string): DocStatus {
+    const map: Record<string, DocStatus> = {
+      PENDING_REVIEW: 'Pending Review',
+      APPROVED:       'Approved',
+      REJECTED:       'Rejected',
+    };
+    return map[s] ?? 'Pending Review';
+  }
+
+  private _catDesc(cat: string): string {
+    const map: Record<string, string> = {
+      CONTRACT:         'Contract document',
+      COURT_DOC:        'Court document',
+      EVIDENCE:         'Evidence file',
+      FINANCIAL:        'Financial document',
+      CLIENT_DOC:       'Client document',
+      VOICE_TRANSCRIPT: 'Voice note — transcription',
+      OTHER:            'Document',
+    };
+    return map[cat] ?? 'Document';
+  }
+
+  private _fmtSize(mb: number): string {
+    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+    return `${(mb / 1024).toFixed(1)} GB`;
+  }
+
+  // ── Selection ─────────────────────────────────────────────
+  toggleDoc(id: string): void {
     this.selectedDocs.update(s => {
       const next = new Set(s);
-      next.has(name) ? next.delete(name) : next.add(name);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   }
-  isSelected(name: string): boolean { return this.selectedDocs().has(name); }
+  isSelected(id: string): boolean { return this.selectedDocs().has(id); }
   toggleAll(): void {
     const docs = this.filteredDocuments();
-    const all  = docs.every(d => this.selectedDocs().has(d.name));
-    this.selectedDocs.set(all ? new Set() : new Set(docs.map(d => d.name)));
-  }
-  get allSelected(): boolean {
-    const docs = this.filteredDocuments();
-    return docs.length > 0 && docs.every(d => this.selectedDocs().has(d.name));
+    const all  = docs.every(d => this.selectedDocs().has(d.id));
+    this.selectedDocs.set(all ? new Set() : new Set(docs.map(d => d.id)));
   }
   clearSelection(): void { this.selectedDocs.set(new Set()); }
-  bulkSummarize(): void { /* triggers AI summarize flow */ alert(`Summarizing ${this.selectedDocs().size} document(s)…`); }
 
-  // ── WEB-DOC-05 — inline status change ────────────────────
-  approveDoc(name: string): void {
-    const idx = this.allDocuments.findIndex(d => d.name === name);
-    if (idx >= 0) this.allDocuments[idx].status = 'Approved';
-  }
-  rejectDoc(name: string): void {
-    const idx = this.allDocuments.findIndex(d => d.name === name);
-    if (idx >= 0) this.allDocuments[idx].status = 'Rejected';
+  // ── Actions ───────────────────────────────────────────────
+  async approveDoc(id: string): Promise<void> {
+    try {
+      await this.docService.updateStatus(id, 'APPROVED');
+      this._docs.update(docs => docs.map(d => d.id === id ? { ...d, status: 'Approved' as DocStatus } : d));
+    } catch { /* ignore */ }
   }
 
-  // ── WEB-DOC-06 — voice recording ─────────────────────────
+  async rejectDoc(id: string): Promise<void> {
+    try {
+      await this.docService.updateStatus(id, 'REJECTED');
+      this._docs.update(docs => docs.map(d => d.id === id ? { ...d, status: 'Rejected' as DocStatus } : d));
+    } catch { /* ignore */ }
+  }
+
+  async deleteDoc(id: string): Promise<void> {
+    if (!confirm('Delete this document? This action cannot be undone.')) return;
+    try {
+      await this.docService.deleteDocument(id);
+      this._docs.update(docs => docs.filter(d => d.id !== id));
+      this.selectedDocs.update(s => { const n = new Set(s); n.delete(id); return n; });
+    } catch { /* ignore */ }
+  }
+
+  async shareDoc(id: string): Promise<void> {
+    try {
+      await this.docService.shareDocument(id);
+    } catch { /* ignore */ }
+  }
+
+  async aiSummarizeDoc(id: string): Promise<void> {
+    try {
+      const res = await this.docService.aiSummarize(id);
+      alert(`AI Summary:\n\n${res.summary}`);
+    } catch (e: any) {
+      alert(e?.error?.detail ?? 'AI summarize failed. Check OpenAI configuration.');
+    }
+  }
+
+  async bulkSummarize(): Promise<void> {
+    const ids = [...this.selectedDocs()];
+    for (const id of ids) {
+      await this.aiSummarizeDoc(id);
+    }
+  }
+
+  viewDoc(doc: DocFile): void {
+    if (doc.storageUrl) window.open(doc.storageUrl, '_blank');
+  }
+
+  downloadDoc(doc: DocFile): void {
+    this.docService.downloadFile({ name: doc.name, url: doc.storageUrl });
+  }
+
+  // ── Voice recording ───────────────────────────────────────
   startRecording(): void {
     this.isRecording.set(true);
     this.recordSeconds.set(0);
@@ -171,7 +362,7 @@ export class Documents {
   }
   get recordTime(): string {
     const s = this.recordSeconds();
-    return `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
+    return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
   }
 
   // ── Status helpers ────────────────────────────────────────

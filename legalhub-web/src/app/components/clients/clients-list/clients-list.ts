@@ -90,7 +90,7 @@ export class ClientsList implements OnInit {
     clientType:'Standard Client', attorney:'',
   });
 
-  attorneys   = ['Sarah Williams', 'Michael Chen', 'David Morrison', 'Jennifer Lopez', 'Robert Taylor'];
+  attorneys   = ['Sarah Williams', 'Michael Chen', 'Jennifer Lopez', 'Robert Taylor'];
   clientTypes = ['Standard Client', 'Premium Client', 'VIP Client'];
 
   get step1Valid() { return this.f1().fullName.trim().length > 0; }

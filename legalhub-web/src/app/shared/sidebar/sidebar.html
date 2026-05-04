@@ -16,7 +16,7 @@
         <span class="text-xs text-slate-400">Current Tenant</span>
         <i class="fa-solid fa-chevron-down text-xs text-slate-400"></i>
       </div>
-      <p class="text-sm font-semibold">Morrison &amp; Associates</p>
+      <p class="text-sm font-semibold">{{ currentUser()?.firmName || 'My Firm' }}</p>
     </div>
   </div>
 
@@ -84,8 +84,8 @@
           }
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-semibold truncate group-hover:text-amber-400 transition-colors">{{ currentUser()?.name || 'David Morrison' }}</p>
-          <p class="text-xs text-slate-400 truncate">{{ currentUser()?.title || 'Senior Partner' }}</p>
+          <p class="text-sm font-semibold truncate group-hover:text-amber-400 transition-colors">{{ currentUser()?.name }}</p>
+          <p class="text-xs text-slate-400 truncate">{{ currentUser()?.title }}</p>
         </div>
       </a>
       <button (click)="logout()" title="Logout" class="flex-shrink-0 text-slate-400 hover:text-white transition-colors cursor-pointer">
