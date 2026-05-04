@@ -10,6 +10,23 @@ import secrets
 
 router = APIRouter(prefix="/api/invoices", tags=["Billing"])
 
+# ─── Helpers ────────────────────────────────────────────
+
+def _auto_mark_overdue(firm_id: str) -> None:
+    """Promote any PENDING invoice whose due_date has passed to OVERDUE."""
+    today = date.today().isoformat()
+    overdue_ids = (
+        supabase.table("invoice")
+        .select("id")
+        .eq("firm_id", firm_id)
+        .eq("status", "PENDING")
+        .lt("due_date", today)
+        .execute()
+    )
+    ids = [r["id"] for r in (overdue_ids.data or [])]
+    if ids:
+        supabase.table("invoice").update({"status": "OVERDUE"}).in_("id", ids).execute()
+
 # ─── Schemas ────────────────────────────────────────────
 
 class InvoiceItem(BaseModel):
@@ -41,6 +58,7 @@ class UpdateInvoiceRequest(BaseModel):
 
 @router.get("/analytics/summary")
 async def billing_analytics(current_user=Depends(get_lawyer)):
+    _auto_mark_overdue(current_user["firm_id"])
     invoices = (
         supabase.table("invoice")
         .select("*")
@@ -73,6 +91,7 @@ async def list_invoices(
     case_id: Optional[str] = None,
     current_user=Depends(get_current_user)
 ):
+    _auto_mark_overdue(current_user["firm_id"])
     query = (
         supabase.table("invoice")
         .select("*, invoice_item(*), client(id, first_name, last_name, email)")

@@ -2,6 +2,7 @@ import uuid
 import re
 import unicodedata
 import logging
+from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.core.dependencies import get_lawyer, get_current_user
 from app.core.database import supabase, supabase_admin
@@ -53,7 +54,7 @@ async def list_documents(
 ):
     query = (
         supabase.table("document")
-        .select("*")
+        .select("*, case_file(id, title, case_number)")
         .eq("firm_id", current_user["firm_id"])
     )
     if case_id:
@@ -71,10 +72,11 @@ async def list_documents(
 async def upload_document(
     file: UploadFile = File(...),
     case_id: str = Form(...),
+    original_name: Optional[str] = Form(None),
     current_user=Depends(get_lawyer)
 ):
     file_content = await file.read()
-    file_name    = file.filename or "upload"
+    file_name    = unquote(original_name) if original_name else (file.filename or "upload")
     safe_name    = _sanitize_filename(file_name)
     file_type    = _detect_file_type(safe_name)
     content_type = file.content_type or "application/octet-stream"

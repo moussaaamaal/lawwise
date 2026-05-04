@@ -16,7 +16,7 @@ class DraftContractRequest(BaseModel):
     case_id: Optional[str] = None
 
 class CaseAssistantRequest(BaseModel):
-    case_id: str
+    case_id: Optional[str] = None
     question: str
 
 class SuggestActionsRequest(BaseModel):
@@ -104,21 +104,31 @@ async def suggest_actions(body: SuggestActionsRequest, current_user=Depends(get_
 
 @router.post("/case-assistant")
 async def case_assistant(body: CaseAssistantRequest, current_user=Depends(get_lawyer)):
-    case = supabase.table("case_file").select("*").eq("id", body.case_id).single().execute()
-    if not case.data:
-        raise HTTPException(status_code=404, detail="Case not found")
+    openai_client = get_openai_client()
 
-    client = get_openai_client()
-    c = case.data
-    response = client.chat.completions.create(
+    if body.case_id:
+        case = supabase.table("case_file").select("*").eq("id", body.case_id).single().execute()
+        if not case.data:
+            raise HTTPException(status_code=404, detail="Case not found")
+        c = case.data
+        system_prompt = (
+            f"You are an AI legal assistant for this case:\n"
+            f"Title: {c['title']}\nType: {c['case_type']}\n"
+            f"Status: {c['status']}\nDescription: {c.get('description', 'N/A')}"
+        )
+    else:
+        system_prompt = (
+            "You are an expert AI legal assistant. "
+            "Help lawyers with legal questions, case strategy, document drafting, "
+            "research, and procedural guidance. Be concise and professional."
+        )
+
+    response = openai_client.chat.completions.create(
         model="gpt-4o",
-        messages=[{
-            "role": "system",
-            "content": f"You are an AI legal assistant for this case:\nTitle: {c['title']}\nType: {c['case_type']}\nStatus: {c['status']}\nDescription: {c.get('description', 'N/A')}"
-        }, {
-            "role": "user",
-            "content": body.question
-        }]
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": body.question},
+        ]
     )
     answer = response.choices[0].message.content
     return {"answer": answer}
