@@ -20,17 +20,19 @@ const C = {
 
 const FILTER_TABS = ['All', 'Today', 'Tomorrow', 'This Week', 'Urgent'];
 
-// ─── Priorité selon le type d'événement ──────────────────────────────────────
-const getEventStyle = (eventType) => {
-  const t = (eventType || '').toUpperCase();
-  if (['HEARING', 'COURT_DATE'].includes(t))
-    return { label: 'Urgent',  color: C.red600,   bg: C.red50,   border: C.red500,   timeBg: C.red100,   timeColor: C.red600   };
-  if (['DEADLINE', 'FILING'].includes(t))
-    return { label: 'High',    color: C.amber600, bg: C.amber50, border: C.amber500, timeBg: C.amber100, timeColor: C.amber600 };
-  if (['MEDIATION', 'ARBITRATION', 'DEPOSITION'].includes(t))
-    return { label: 'Medium',  color: C.amber600, bg: C.amber50, border: C.amber500, timeBg: C.amber100, timeColor: C.amber600 };
-  return   { label: 'Normal',  color: C.blue600,  bg: C.blue50,  border: C.secondary,timeBg: C.blue100,  timeColor: C.blue600  };
+// ─── Style par type d'événement ──────────────────────────────────────────────
+const EVENT_TYPE_META = {
+  HEARING:      { icon: 'gavel',          label: 'Court Hearing', color: C.red600,    bg: C.red50,    border: C.red500,    timeBg: C.red100,    timeColor: C.red600    },
+  COURT_DATE:   { icon: 'landmark',       label: 'Court Date',    color: C.purple600, bg: C.purple50, border: C.purple600, timeBg: C.purple100, timeColor: C.purple600 },
+  MEETING:      { icon: 'handshake',      label: 'Meeting',       color: C.amber600,  bg: C.amber50,  border: C.amber500,  timeBg: C.amber100,  timeColor: C.amber600  },
+  CONSULTATION: { icon: 'comments',       label: 'Consultation',  color: C.green600,  bg: C.green50,  border: C.green600,  timeBg: C.green100,  timeColor: C.green600  },
+  DEADLINE:     { icon: 'clock',          label: 'Deadline',      color: C.blue600,   bg: C.blue50,   border: C.blue600,   timeBg: C.blue100,   timeColor: C.blue600   },
+  FILING:       { icon: 'file-signature', label: 'Filing',        color: C.amber600,  bg: C.amber50,  border: C.amber500,  timeBg: C.amber100,  timeColor: C.amber600  },
+  DEPOSITION:   { icon: 'microphone',     label: 'Deposition',    color: C.red600,    bg: C.red50,    border: C.red500,    timeBg: C.red100,    timeColor: C.red600    },
+  MEDIATION:    { icon: 'balance-scale',  label: 'Mediation',     color: C.green600,  bg: C.green50,  border: C.green600,  timeBg: C.green100,  timeColor: C.green600  },
+  ARBITRATION:  { icon: 'balance-scale',  label: 'Arbitration',   color: C.purple600, bg: C.purple50, border: C.purple600, timeBg: C.purple100, timeColor: C.purple600 },
 };
+const EV_DEFAULT_META = { icon: 'calendar-check', label: 'Event', color: C.blue600, bg: C.blue50, border: C.secondary, timeBg: C.blue100, timeColor: C.blue600 };
 
 const EVENT_TYPE_LABEL = {
   HEARING:      'Court Hearing',
@@ -266,21 +268,21 @@ export default function AllScheduleScreen({ navigation }) {
 
                 {/* ── Événements ── */}
                 {group.events.map((ev) => {
-                  const evStyle  = getEventStyle(ev.event_type);
+                  const evMeta   = EVENT_TYPE_META[(ev.event_type || '').toUpperCase()] ?? EV_DEFAULT_META;
                   const dt       = parseDate(ev.start_datetime);
                   const h        = localH(dt), m = localM(dt);
                   const time     = `${h % 12 || 12}:${String(m).padStart(2, '0')}`;
                   const period   = h >= 12 ? 'PM' : 'AM';
-                  const typeTag  = EVENT_TYPE_LABEL[(ev.event_type || '').toUpperCase()] || (ev.event_type || '').replace(/_/g, ' ');
                   const caseTitle = ev.case_file?.title || null;
 
                   return (
-                    <View key={ev.id} style={[s.card, { borderLeftWidth: 4, borderLeftColor: evStyle.border }]}>
+                    <View key={ev.id} style={[s.card, { borderLeftWidth: 4, borderLeftColor: evMeta.border }]}>
                       <View style={s.cardTop}>
-                        {/* Heure */}
-                        <View style={[s.timeBox, { backgroundColor: evStyle.timeBg }]}>
-                          <Text style={[s.timeVal,    { color: evStyle.timeColor }]}>{time}</Text>
-                          <Text style={[s.timePeriod, { color: evStyle.timeColor }]}>{period}</Text>
+                        {/* Icône + Heure */}
+                        <View style={[s.timeBox, { backgroundColor: evMeta.timeBg }]}>
+                          <FontAwesome5 name={evMeta.icon} size={12} color={evMeta.timeColor} style={{ marginBottom: 3 }} />
+                          <Text style={[s.timeVal,    { color: evMeta.timeColor }]}>{time}</Text>
+                          <Text style={[s.timePeriod, { color: evMeta.timeColor }]}>{period}</Text>
                         </View>
 
                         {/* Info */}
@@ -292,14 +294,9 @@ export default function AllScheduleScreen({ navigation }) {
                             <Text style={s.eventSub} numberOfLines={1}>📁 {caseTitle}</Text>
                           ) : null}
                           <View style={s.tagRow}>
-                            <View style={[s.pill, { backgroundColor: evStyle.bg }]}>
-                              <Text style={[s.pillTxt, { color: evStyle.color }]}>{evStyle.label}</Text>
+                            <View style={[s.pill, { backgroundColor: evMeta.bg }]}>
+                              <Text style={[s.pillTxt, { color: evMeta.color }]}>{evMeta.label}</Text>
                             </View>
-                            {typeTag ? (
-                              <View style={[s.pill, { backgroundColor: C.g100 }]}>
-                                <Text style={[s.pillTxt, { color: C.g600 }]}>{typeTag}</Text>
-                              </View>
-                            ) : null}
                           </View>
                         </View>
                       </View>
@@ -307,9 +304,8 @@ export default function AllScheduleScreen({ navigation }) {
                       {/* Footer */}
                       <View style={s.cardFooter}>
                         <View style={s.clientRow}>
-                          {/* Avatar placeholder */}
-                          <View style={s.avatarCircle}>
-                            <FontAwesome5 name="calendar-check" size={12} color={C.primary} />
+                          <View style={[s.avatarCircle, { backgroundColor: evMeta.bg }]}>
+                            <FontAwesome5 name={evMeta.icon} size={12} color={evMeta.color} />
                           </View>
                           <View style={{ marginLeft: 8 }}>
                             {caseTitle ? (
@@ -377,7 +373,7 @@ const s = StyleSheet.create({
 
   card:       { backgroundColor: C.white, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2, borderWidth: 1, borderColor: C.g100, marginBottom: 10 },
   cardTop:    { flexDirection: 'row', marginBottom: 12 },
-  timeBox:    { width: 52, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  timeBox:    { width: 56, height: 64, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   timeVal:    { fontSize: 13, fontWeight: '800' },
   timePeriod: { fontSize: 10, fontWeight: '600' },
   eventTitle: { fontSize: 14, fontWeight: '700', color: C.dark, marginBottom: 2 },

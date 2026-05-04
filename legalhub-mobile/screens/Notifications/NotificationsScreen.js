@@ -184,8 +184,9 @@ const DOC_ACTIVITY = [
 ];
 
 // ─── COMPOSANT NOTIFICATION CARD ─────────────────────────────────────────────
-const NotifCard = ({ n }) => (
-  <View style={[s.notifCard, { borderLeftColor: n.borderColor }]}>
+const NotifCard = ({ n, onMarkRead }) => (
+  <TouchableOpacity activeOpacity={0.85} onPress={() => onMarkRead?.(n.id)}>
+  <View style={[s.notifCard, { borderLeftColor: n.borderColor }, n.is_read === false && s.notifCardUnread]}>
     <View style={{ flexDirection: 'row', gap: 12 }}>
       <View style={[s.notifIcon, { backgroundColor: n.iconBg }]}>
         <FontAwesome5 name={n.iconName} size={18} color={n.iconColor} />
@@ -248,9 +249,19 @@ const NotifCard = ({ n }) => (
       </View>
     </View>
   </View>
+  </TouchableOpacity>
 );
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
+// Filter tab index → notification types (null = all)
+const FILTER_TYPE_MAP = [
+  null,                                       // 0 - All Updates
+  ['CASE_UPDATE', 'HEARING_REMINDER'],        // 1 - Cases
+  ['DOCUMENT_SHARED'],                        // 2 - Documents
+  ['INVOICE_DUE'],                            // 3 - Payments
+  ['HEARING_REMINDER', 'TASK_ASSIGNED'],      // 4 - Deadlines
+];
+
 // Map API notification type → icon config
 const TYPE_CONFIG = {
   CASE_UPDATE:      { iconName: 'briefcase',          iconColor: '#1E40AF', iconBg: '#DBEAFE', borderColor: '#3B82F6', badge: 'CASE UPDATE',      badgeColor: '#1E40AF', badgeBg: '#EFF6FF' },
@@ -265,6 +276,8 @@ function apiNotifToCard(n) {
   const cfg = TYPE_CONFIG[n.type] || TYPE_CONFIG.GENERAL;
   return {
     ...cfg,
+    id:          n.id,
+    type:        n.type || 'GENERAL',
     time:        n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
     title:       n.title,
     desc:        n.message || '',
@@ -298,20 +311,44 @@ export default function NotificationsScreen({ navigation }) {
     } catch (_) {}
   };
 
-  const today = new Date();
-  const todayStr = today.toDateString();
-  const yesterdayStr = new Date(today - 86400000).toDateString();
+  const handleMarkOneRead = async (id) => {
+    if (!id) return;
+    try {
+      await notificationsAPI.markOneRead(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    } catch (_) {}
+  };
 
-  const todayNotifs     = notifications.filter(n => n._date.toDateString() === todayStr);
-  const yesterdayNotifs = notifications.filter(n => n._date.toDateString() === yesterdayStr);
-  const olderNotifs     = notifications.filter(n => n._date.toDateString() !== todayStr && n._date.toDateString() !== yesterdayStr);
+  const today     = new Date();
+  const yesterday = new Date(today - 86400000);
+  const todayStr     = today.toDateString();
+  const yesterdayStr = yesterday.toDateString();
+
+  const todayLabel     = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const yesterdayLabel = yesterday.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  // Apply type filter to API notifications
+  const filterTypes = FILTER_TYPE_MAP[activeFilter];
+  const filtered = filterTypes
+    ? notifications.filter(n => filterTypes.includes(n.type))
+    : notifications;
+
+  const todayNotifs     = filtered.filter(n => n._date.toDateString() === todayStr);
+  const yesterdayNotifs = filtered.filter(n => n._date.toDateString() === yesterdayStr);
+  const olderNotifs     = filtered.filter(n => n._date.toDateString() !== todayStr && n._date.toDateString() !== yesterdayStr);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  // Use static data when API returns nothing yet
-  const displayToday     = todayNotifs.length     > 0 ? todayNotifs     : TODAY_NOTIFS;
-  const displayYesterday = yesterdayNotifs.length > 0 ? yesterdayNotifs : YESTERDAY_NOTIFS;
-  const displayOlder     = olderNotifs.length     > 0 ? olderNotifs     : WEEK_NOTIFS;
+  // Use API data when available, static fallback only when API returned nothing
+  const usingApiData   = notifications.length > 0;
+  const displayToday     = usingApiData ? todayNotifs     : TODAY_NOTIFS;
+  const displayYesterday = usingApiData ? yesterdayNotifs : YESTERDAY_NOTIFS;
+  const displayOlder     = usingApiData ? olderNotifs     : WEEK_NOTIFS;
+
+  // Dynamic stats from API data (fallback to static values for demo)
+  const statCases    = usingApiData ? notifications.filter(n => ['CASE_UPDATE', 'HEARING_REMINDER'].includes(n.type)).length : 8;
+  const statDocs     = usingApiData ? notifications.filter(n => n.type === 'DOCUMENT_SHARED').length : 12;
+  const statPayments = usingApiData ? notifications.filter(n => n.type === 'INVOICE_DUE').length : 5;
 
   if (loading) {
     return (
@@ -360,9 +397,9 @@ export default function NotificationsScreen({ navigation }) {
         <View style={[s.section, { backgroundColor: C.blue50 }]}>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             {[
-              { icon: 'briefcase', iconColor: C.primary, iconBg: C.blue100, value: '8', label: 'Case Updates', borderColor: '#BFDBFE' },
-              { icon: 'file-alt', iconColor: C.green600, iconBg: C.green100, value: '12', label: 'New Docs', borderColor: '#BBF7D0' },
-              { icon: 'dollar-sign', iconColor: C.amber600, iconBg: C.amber100, value: '5', label: 'Payments', borderColor: '#FDE68A' },
+              { icon: 'briefcase', iconColor: C.primary, iconBg: C.blue100, value: String(statCases), label: 'Case Updates', borderColor: '#BFDBFE' },
+              { icon: 'file-alt', iconColor: C.green600, iconBg: C.green100, value: String(statDocs), label: 'New Docs', borderColor: '#BBF7D0' },
+              { icon: 'dollar-sign', iconColor: C.amber600, iconBg: C.amber100, value: String(statPayments), label: 'Payments', borderColor: '#FDE68A' },
             ].map((st, i) => (
               <View key={i} style={[s.statCard, { borderColor: st.borderColor }]}>
                 <View style={[s.statIcon, { backgroundColor: st.iconBg }]}>
@@ -376,31 +413,46 @@ export default function NotificationsScreen({ navigation }) {
         </View>
 
         {/* TODAY */}
+        {displayToday.length > 0 && (
         <View style={s.section}>
           <View style={s.groupHeader}>
             <Text style={s.groupTitle}>Today</Text>
-            <Text style={s.groupDate}>March 15, 2024</Text>
+            <Text style={s.groupDate}>{todayLabel}</Text>
           </View>
-          {displayToday.map((n, i) => <NotifCard key={i} n={n} />)}
+          {displayToday.map((n, i) => <NotifCard key={i} n={n} onMarkRead={handleMarkOneRead} />)}
         </View>
+        )}
 
         {/* YESTERDAY */}
+        {displayYesterday.length > 0 && (
         <View style={[s.section, { backgroundColor: '#FAFAFA' }]}>
           <View style={s.groupHeader}>
             <Text style={s.groupTitle}>Yesterday</Text>
-            <Text style={s.groupDate}>March 14, 2024</Text>
+            <Text style={s.groupDate}>{yesterdayLabel}</Text>
           </View>
-          {displayYesterday.map((n, i) => <NotifCard key={i} n={n} />)}
+          {displayYesterday.map((n, i) => <NotifCard key={i} n={n} onMarkRead={handleMarkOneRead} />)}
         </View>
+        )}
 
-        {/* EARLIER THIS WEEK */}
+        {/* EARLIER */}
+        {displayOlder.length > 0 && (
         <View style={s.section}>
           <View style={s.groupHeader}>
-            <Text style={s.groupTitle}>Earlier This Week</Text>
-            <Text style={s.groupDate}>March 11–13</Text>
+            <Text style={s.groupTitle}>Earlier</Text>
+            <Text style={s.groupDate}>{olderNotifs.length > 0 ? '' : 'This Week'}</Text>
           </View>
-          {displayOlder.map((n, i) => <NotifCard key={i} n={n} />)}
+          {displayOlder.map((n, i) => <NotifCard key={i} n={n} onMarkRead={handleMarkOneRead} />)}
         </View>
+        )}
+
+        {/* Empty state when filter returns no results */}
+        {usingApiData && filtered.length === 0 && (
+          <View style={[s.section, { alignItems: 'center', paddingVertical: 40 }]}>
+            <FontAwesome5 name="bell-slash" size={36} color={C.g400} />
+            <Text style={{ fontSize: 15, fontWeight: '700', color: C.g500, marginTop: 14 }}>No notifications</Text>
+            <Text style={{ fontSize: 13, color: C.g400, marginTop: 6 }}>Nothing in this category yet</Text>
+          </View>
+        )}
 
         {/* PAYMENT STATUS OVERVIEW */}
         <View style={[s.section, { backgroundColor: C.green50 }]}>
@@ -507,6 +559,7 @@ const s = StyleSheet.create({
 
   // Notification card
   notifCard: { backgroundColor: C.white, borderRadius: 16, padding: 14, borderLeftWidth: 4, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 5, elevation: 2, borderWidth: 1, borderColor: C.g100, marginBottom: 10 },
+  notifCardUnread: { backgroundColor: '#EFF6FF' },
   notifIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   notifTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   notifTime: { fontSize: 11, color: C.g400 },

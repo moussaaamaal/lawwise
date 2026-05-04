@@ -15,6 +15,7 @@ import {
 import AddCaseScreen              from './Cases/AddCaseScreen';
 import CaseDetailsScreen          from './Cases/CaseDetailsScreen';
 import AddClientScreen            from './Clients/AddClientScreen';
+import ClientDetailsScreen        from './Clients/ClientDetailsScreen';
 import UploadDocumentScreen       from './Documents/UploadDocumentScreen';
 import AddNoteScreen              from './TasksNotes/AddNoteScreen';
 import AIAssistantScreen          from './AI/AIAssistantScreen';
@@ -24,6 +25,7 @@ import VoiceNoteScreen            from './TasksNotes/VoiceNoteScreen';
 import AddTaskScreen              from './TasksNotes/AddTaskScreen';
 import NotificationsScreen        from './Notifications/NotificationsScreen';
 import InvoicesManagementScreen   from './Invoices/InvoicesManagementScreen';
+import InvoiceDetailsScreen       from './Invoices/InvoiceDetailsScreen';
 import ClientsManagementScreen    from './Clients/ClientsManagementScreen';
 import TasksNotesManagementScreen from './TasksNotes/TasksNotesManagementScreen';
 import AllScheduleScreen          from './Schedule/AllScheduleScreen';
@@ -90,6 +92,14 @@ const formatRelativeDate = (dateStr) => {
   if (diff === 1) return 'Yesterday';
   if (diff < 7)  return `${diff}d ago`;
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+};
+
+const TASK_PRIORITY = {
+  URGENT: { label: 'Urgent', color: COLORS.red600,   bg: COLORS.red50   },
+  HIGH:   { label: 'High',   color: COLORS.red600,   bg: COLORS.red50   },
+  MEDIUM: { label: 'Medium', color: COLORS.amber600, bg: COLORS.amber50 },
+  NORMAL: { label: 'Normal', color: COLORS.green600, bg: COLORS.green50 },
+  LOW:    { label: 'Low',    color: COLORS.green600, bg: COLORS.green50 },
 };
 
 const getDueBadge = (dueDate, priority) => {
@@ -244,49 +254,44 @@ const ManagementCard = ({ item, onPress }) => (
   </TouchableOpacity>
 );
 
-const EVENT_TYPE_ICON = {
-  court_hearing:       'gavel',
-  hearing:             'gavel',
-  meeting:             'handshake',
-  client_meeting:      'handshake',
-  internal_meeting:    'users',
-  consultation:        'comments',
-  deadline:            'clock',
-  filing:              'file-alt',
-  document_submission: 'file-upload',
-  mediation:           'balance-scale',
-  arbitration:         'balance-scale',
-  deposition:          'microphone',
+const EVENT_TYPE_META = {
+  court_hearing:       { icon: 'gavel',          color: COLORS.red600,    timeBg: COLORS.red100    },
+  hearing:             { icon: 'gavel',          color: COLORS.red600,    timeBg: COLORS.red100    },
+  court_date:          { icon: 'landmark',       color: COLORS.purple600, timeBg: COLORS.purple100 },
+  meeting:             { icon: 'handshake',      color: COLORS.amber600,  timeBg: COLORS.amber100  },
+  client_meeting:      { icon: 'handshake',      color: COLORS.amber600,  timeBg: COLORS.amber100  },
+  internal_meeting:    { icon: 'users',          color: COLORS.amber600,  timeBg: COLORS.amber100  },
+  consultation:        { icon: 'comments',       color: COLORS.green600,  timeBg: COLORS.green100  },
+  deadline:            { icon: 'clock',          color: COLORS.blue600,   timeBg: COLORS.blue100   },
+  filing:              { icon: 'file-signature', color: COLORS.amber600,  timeBg: COLORS.amber100  },
+  document_submission: { icon: 'file-upload',    color: COLORS.amber600,  timeBg: COLORS.amber100  },
+  mediation:           { icon: 'balance-scale',  color: COLORS.green600,  timeBg: COLORS.green100  },
+  arbitration:         { icon: 'balance-scale',  color: COLORS.purple600, timeBg: COLORS.purple100 },
+  deposition:          { icon: 'microphone',     color: COLORS.red600,    timeBg: COLORS.red100    },
 };
+const EV_DEFAULT_META = { icon: 'calendar-alt', color: COLORS.primary, timeBg: COLORS.blue100 };
 
 const ScheduleCard = ({ event, navigateTo }) => {
-  const pCfg    = PRIORITY_CONFIG[event.priority] || PRIORITY_CONFIG.normal;
+  const evMeta  = EVENT_TYPE_META[event.type] ?? EV_DEFAULT_META;
   const actions = getEventActions(event, navigateTo);
-  const typeIcon = EVENT_TYPE_ICON[event.type] || 'calendar-alt';
 
   return (
     <View style={ev.card}>
       {/* ── Header coloré ── */}
-      <View style={[ev.header, { backgroundColor: pCfg.timeBg }]}>
+      <View style={[ev.header, { backgroundColor: evMeta.timeBg }]}>
         <View style={ev.headerLeft}>
-          <View style={[ev.iconCircle, { backgroundColor: pCfg.color + '22' }]}>
-            <FontAwesome5 name={typeIcon} size={13} color={pCfg.color} />
+          <View style={[ev.iconCircle, { backgroundColor: evMeta.color + '22' }]}>
+            <FontAwesome5 name={evMeta.icon} size={13} color={evMeta.color} />
           </View>
-          <Text style={[ev.timeText, { color: pCfg.color }]}>
+          <Text style={[ev.timeText, { color: evMeta.color }]}>
             {event.time} <Text style={ev.timePeriod}>{event.period}</Text>
           </Text>
         </View>
-        {event.tag ? (
-          <View style={[ev.typePill, { backgroundColor: pCfg.color + '18', borderColor: pCfg.color + '40' }]}>
-            <Text style={[ev.typePillText, { color: pCfg.color }]} numberOfLines={1}>
-              {event.tag.replace(/_/g, ' ')}
-            </Text>
-          </View>
-        ) : (
-          <View style={[ev.typePill, { backgroundColor: pCfg.color + '18', borderColor: pCfg.color + '40' }]}>
-            <Text style={[ev.typePillText, { color: pCfg.color }]}>{pCfg.label}</Text>
-          </View>
-        )}
+        <View style={[ev.typePill, { backgroundColor: evMeta.color + '18', borderColor: evMeta.color + '40' }]}>
+          <Text style={[ev.typePillText, { color: evMeta.color }]} numberOfLines={1}>
+            {(event.tag || event.type || 'event').replace(/_/g, ' ')}
+          </Text>
+        </View>
       </View>
 
       {/* ── Corps ── */}
@@ -385,19 +390,35 @@ const TaskCard = ({ item, onDone }) => (
     <View style={styles.row}>
       <TouchableOpacity style={styles.checkbox} onPress={() => onDone && onDone(item.id)} />
       <View style={{ flex: 1 }}>
-        <View style={[styles.row, { marginBottom: 4, flexWrap: 'wrap', gap: 6 }]}>
+        {/* Titre + badge priorité */}
+        <View style={[styles.row, { marginBottom: 6, flexWrap: 'wrap', gap: 6 }]}>
           <Text style={[styles.cardTitle, { flex: 1 }]}>{item.title}</Text>
-          <View style={[styles.tag, { backgroundColor: item.badgeBg }]}>
-            <Text style={[styles.tagText, { color: item.badgeColor }]}>{item.badge}</Text>
+          <View style={[styles.tag, { backgroundColor: item.prioBg }]}>
+            <Text style={[styles.tagText, { color: item.prioColor }]}>{item.prioLabel}</Text>
           </View>
         </View>
-        <Text style={[styles.cardSubtitle, { marginBottom: 8 }]}>{item.subtitle}</Text>
+        {/* Description */}
+        {item.description ? (
+          <Text style={[styles.cardSubtitle, { marginBottom: 6 }]} numberOfLines={2}>{item.description}</Text>
+        ) : null}
+        {/* Dossier */}
+        {item.caseName ? (
+          <View style={[styles.row, { marginBottom: 3 }]}>
+            <Icon lib="FA5" name="briefcase" size={10} color={COLORS.gray400} />
+            <Text style={[styles.gray500Sm, { marginLeft: 5 }]} numberOfLines={1}>{item.caseName}</Text>
+          </View>
+        ) : null}
+        {/* Avocat + échéance */}
         <View style={styles.row}>
-          <Icon lib="FA5" name="briefcase" size={11} color={COLORS.gray400} />
-          <Text style={[styles.gray500Sm, { marginLeft: 4 }]}>{item.caseId}</Text>
+          {item.lawyerName ? (
+            <>
+              <Icon lib="FA5" name="user-tie" size={10} color={COLORS.gray400} />
+              <Text style={[styles.gray500Sm, { marginLeft: 5, flex: 1 }]} numberOfLines={1}>{item.lawyerName}</Text>
+            </>
+          ) : <View style={{ flex: 1 }} />}
           {item.timeLeft && (
-            <View style={[styles.row, { marginLeft: 'auto' }]}>
-              <Icon lib="FA5" name="clock" size={11} color={item.timeColor} />
+            <View style={styles.row}>
+              <Icon lib="FA5" name="clock" size={10} color={item.timeColor} />
               <Text style={[styles.gray500Sm, { color: item.timeColor, fontWeight: '600', marginLeft: 4 }]}>{item.timeLeft}</Text>
             </View>
           )}
@@ -409,6 +430,10 @@ const TaskCard = ({ item, onDone }) => (
 
 const DocumentCard = ({ item }) => {
   if (!item.action) return null;
+  const handleView = () => {
+    if (!item.fileUrl) { Alert.alert('Unavailable', 'No file URL for this document.'); return; }
+    Linking.openURL(item.fileUrl).catch(() => Alert.alert('Error', 'Could not open the document.'));
+  };
   return (
     <View style={styles.card}>
       <View style={styles.row}>
@@ -422,7 +447,11 @@ const DocumentCard = ({ item }) => {
             {item.size ? <Text style={styles.gray500Sm}>{item.size}</Text> : null}
             {item.size && item.date ? <Text style={[styles.gray500Sm, { marginHorizontal: 6 }]}>•</Text> : null}
             {item.date ? <Text style={styles.gray500Sm}>{item.date}</Text> : null}
-            <TouchableOpacity style={[styles.tagBtn, { backgroundColor: item.action.bg, marginLeft: 'auto' }]}>
+            <TouchableOpacity
+              style={[styles.tagBtn, { backgroundColor: item.action.bg, marginLeft: 'auto' }]}
+              onPress={handleView}
+              activeOpacity={0.7}
+            >
               <View style={styles.row}>
                 <Icon lib={item.action.iconLib} name={item.action.iconName} size={11} color={item.action.color} />
                 <Text style={[styles.tagText, { color: item.action.color, marginLeft: 4 }]}>{item.action.label}</Text>
@@ -438,8 +467,11 @@ const DocumentCard = ({ item }) => {
 // ─── ÉCRAN PRINCIPAL ─────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const { user } = useAuth();
-  const [currentScreen, setCurrentScreen] = useState(null);
-  const [selectedCase,  setSelectedCase]  = useState(null);
+  const [currentScreen,    setCurrentScreen]    = useState(null);
+  const [previousScreen,   setPreviousScreen]   = useState(null);
+  const [selectedCase,     setSelectedCase]     = useState(null);
+  const [selectedClientId, setSelectedClientId] = useState(null);
+  const [selectedInvoice,  setSelectedInvoice]  = useState(null);
 
   // ── État API ─────────────────────────────────────────────────────────────
   const [stats,        setStats]        = useState(null);
@@ -547,13 +579,26 @@ export default function HomeScreen() {
   }, []);
 
   // ── Marquer une tâche comme terminée ─────────────────────────────────────
-  const handleTaskDone = useCallback(async (taskId) => {
-    try {
-      await tasksAPI.updateStatus(taskId, 'DONE');
-      setPendingTasks(prev => prev.filter(t => t.id !== taskId));
-    } catch {
-      Alert.alert('Error', 'Could not update task status. Please try again.');
-    }
+  const handleTaskDone = useCallback((taskId) => {
+    Alert.alert(
+      'Complete Task',
+      'Mark this task as completed?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete',
+          style: 'default',
+          onPress: async () => {
+            try {
+              await tasksAPI.updateStatus(taskId, 'COMPLETED');
+              setPendingTasks(prev => prev.filter(t => t.id !== taskId));
+            } catch {
+              Alert.alert('Error', 'Could not update task status. Please try again.');
+            }
+          },
+        },
+      ],
+    );
   }, []);
 
   // ── Cartes de statistiques ────────────────────────────────────────────────
@@ -574,10 +619,10 @@ export default function HomeScreen() {
     },
     {
       iconLib: 'FA5', iconName: 'tasks', iconColor: COLORS.amber600, iconBg: COLORS.amber100,
-      count: String(stats.active_reminders ?? 0), label: 'Pending Tasks',
-      badge: stats.active_reminders > 0 ? 'Overdue' : 'Clear',
-      badgeColor: stats.active_reminders > 0 ? COLORS.red600   : COLORS.green600,
-      badgeBg:    stats.active_reminders > 0 ? COLORS.red50    : COLORS.green50,
+      count: String(pendingTasks.length), label: 'Pending Tasks',
+      badge: pendingTasks.length > 0 ? 'Pending' : 'Clear',
+      badgeColor: pendingTasks.length > 0 ? COLORS.amber600  : COLORS.green600,
+      badgeBg:    pendingTasks.length > 0 ? COLORS.amber50   : COLORS.green50,
     },
     {
       iconLib: 'FA5', iconName: 'check-circle', iconColor: COLORS.green600, iconBg: COLORS.green100,
@@ -600,7 +645,7 @@ export default function HomeScreen() {
       screen: 'TasksNotesManagement', icon: 'tasks', iconLib: 'FA5',
       label: 'Tasks & Notes', sublabel: 'Management',
       color: COLORS.amber600, bg: COLORS.amber50, accent: COLORS.amber100,
-      badge: stats ? String(stats.active_reminders ?? 0) : '—',
+      badge: String(pendingTasks.length),
       badgeLabel: 'Pending', badgeColor: COLORS.amber600, badgeBg: COLORS.amber100,
     },
     {
@@ -641,9 +686,10 @@ export default function HomeScreen() {
   // ── Conversion dossiers récents ───────────────────────────────────────────
   const CASE_PRIORITY = {
     URGENT: { color: COLORS.red600,   bg: COLORS.red50   },
-    HIGH:   { color: COLORS.amber600, bg: COLORS.amber50 },
-    MEDIUM: { color: COLORS.blue600,  bg: COLORS.blue50  },
+    HIGH:   { color: COLORS.red600,   bg: COLORS.red50   },
+    MEDIUM: { color: COLORS.amber600, bg: COLORS.amber50 },
     NORMAL: { color: COLORS.green600, bg: COLORS.green50 },
+    LOW:    { color: COLORS.green600, bg: COLORS.green50 },
   };
 
   const casesDisplay = recentCases.map((c) => {
@@ -687,14 +733,20 @@ export default function HomeScreen() {
 
   // ── Conversion tâches ─────────────────────────────────────────────────────
   const tasksDisplay = pendingTasks.map((task) => {
-    const dueBadge = getDueBadge(task.due_date, task.priority);
+    const dueBadge  = getDueBadge(task.due_date, task.priority);
+    const prioKey   = (task.priority || 'NORMAL').toUpperCase();
+    const prioCfg   = TASK_PRIORITY[prioKey] || TASK_PRIORITY.NORMAL;
     return {
-      id:       task.id,
-      title:    task.title,
+      id:         task.id,
+      title:      task.title,
       ...dueBadge,
-      subtitle: task.case_number || task.description || '',
-      caseId:   task.case_number || task.case_id || '—',
-      timeLeft: task.due_date ? formatRelativeDate(task.due_date) : null,
+      description: task.description || null,
+      caseName:    task.case_file?.title || task.case_file?.case_number || null,
+      lawyerName:  task.app_user?.full_name || null,
+      prioLabel:  prioCfg.label,
+      prioColor:  prioCfg.color,
+      prioBg:     prioCfg.bg,
+      timeLeft:   task.due_date ? formatRelativeDate(task.due_date) : null,
     };
   });
 
@@ -709,6 +761,7 @@ export default function HomeScreen() {
       case:    doc.case_file?.title || doc.case_file?.case_number || '',
       size:    doc.file_size_mb ? `${Number(doc.file_size_mb).toFixed(1)} MB` : '',
       date:    formatRelativeDate(doc.created_at),
+      fileUrl: doc.storage_url || null,
       action:  { iconLib: 'FA5', iconName: 'eye', label: 'View', color: COLORS.purple600, bg: COLORS.purple50 },
     };
   });
@@ -716,6 +769,44 @@ export default function HomeScreen() {
   const navigateTo = (screen) => setCurrentScreen(screen);
   const goBack = () => setCurrentScreen(null);
   const screenProps = { navigation: { goBack } };
+
+  const tasksNotesNav = {
+    goBack,
+    navigate: (screen) => {
+      if (screen === 'AddTask' || screen === 'VoiceNote' || screen === 'AddNote') {
+        setPreviousScreen('TasksNotesManagement');
+        setCurrentScreen(screen);
+      }
+    },
+  };
+
+  const clientsManagementNav = {
+    goBack,
+    navigate: (screen, params) => {
+      if (screen === 'ClientDetails' && params?.clientId) {
+        setSelectedClientId(params.clientId);
+        setPreviousScreen('ClientsManagement');
+        setCurrentScreen('ClientDetails');
+      } else if (screen === 'AddClient') {
+        setPreviousScreen('ClientsManagement');
+        setCurrentScreen('AddClient');
+      }
+    },
+  };
+
+  const invoicesManagementNav = {
+    goBack,
+    navigate: (screen, params) => {
+      if (screen === 'Invoice') {
+        setPreviousScreen('InvoicesManagement');
+        setCurrentScreen('Invoice');
+      } else if (screen === 'InvoiceDetails' && params?.invoice) {
+        setSelectedInvoice(params.invoice);
+        setPreviousScreen('InvoicesManagement');
+        setCurrentScreen('InvoiceDetails');
+      }
+    },
+  };
 
   const firstName = user?.full_name?.split(' ')[0] || 'there';
   const firmName  = user?.firm_name || 'Your Firm';
@@ -743,18 +834,30 @@ export default function HomeScreen() {
   }
 
   if (currentScreen === 'AddCase')              return <AddCaseScreen {...screenProps} />;
-  if (currentScreen === 'AddClient')            return <AddClientScreen {...screenProps} />;
+  if (currentScreen === 'AddClient')            return <AddClientScreen navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); } }} />;
   if (currentScreen === 'UploadDoc')            return <UploadDocumentScreen {...screenProps} />;
-  if (currentScreen === 'AddNote')              return <AddNoteScreen {...screenProps} />;
+  if (currentScreen === 'AddNote')              return <AddNoteScreen navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); } }} />;
   if (currentScreen === 'AIAssistant')          return <AIAssistantScreen {...screenProps} />;
   if (currentScreen === 'Schedule')             return <ScheduleScreen {...screenProps} />;
-  if (currentScreen === 'Invoice')              return <InvoiceScreen {...screenProps} />;
-  if (currentScreen === 'VoiceNote')            return <VoiceNoteScreen {...screenProps} />;
-  if (currentScreen === 'AddTask')              return <AddTaskScreen {...screenProps} />;
+  if (currentScreen === 'Invoice')              return <InvoiceScreen navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); } }} />;
+  if (currentScreen === 'VoiceNote')            return <VoiceNoteScreen navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); } }} />;
+  if (currentScreen === 'AddTask')              return <AddTaskScreen   navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); } }} />;
   if (currentScreen === 'Notifications')        return <NotificationsScreen {...screenProps} />;
-  if (currentScreen === 'InvoicesManagement')   return <InvoicesManagementScreen {...screenProps} />;
-  if (currentScreen === 'ClientsManagement')    return <ClientsManagementScreen {...screenProps} />;
-  if (currentScreen === 'TasksNotesManagement') return <TasksNotesManagementScreen {...screenProps} />;
+  if (currentScreen === 'InvoicesManagement')   return <InvoicesManagementScreen navigation={invoicesManagementNav} />;
+  if (currentScreen === 'InvoiceDetails')       return (
+    <InvoiceDetailsScreen
+      navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); setSelectedInvoice(null); } }}
+      route={{ params: { invoice: selectedInvoice } }}
+    />
+  );
+  if (currentScreen === 'ClientsManagement')    return <ClientsManagementScreen navigation={clientsManagementNav} />;
+  if (currentScreen === 'ClientDetails')        return (
+    <ClientDetailsScreen
+      navigation={{ goBack: () => { setCurrentScreen(previousScreen || null); setPreviousScreen(null); setSelectedClientId(null); } }}
+      route={{ params: { clientId: selectedClientId } }}
+    />
+  );
+  if (currentScreen === 'TasksNotesManagement') return <TasksNotesManagementScreen navigation={tasksNotesNav} />;
   if (currentScreen === 'AllSchedule')          return <AllScheduleScreen {...screenProps} />;
   if (currentScreen === 'AllCases')             return <AllCasesScreen {...screenProps} />;
   if (currentScreen === 'AllTasks')             return <AllTasksScreen {...screenProps} />;

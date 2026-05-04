@@ -1,7 +1,7 @@
 // services/api.js
 import { getStoredToken, getStoredRefresh, storeTokens } from '../context/AuthContext';
 
-const BASE_URL = 'http://192.168.1.12:8000';
+const BASE_URL = 'http://192.168.1.13:8000';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const getAuthHeaders = async () => {
@@ -135,6 +135,7 @@ export const documentsAPI = {
     const formData = new FormData();
     formData.append('file', { uri: file.uri, name: file.name || 'document.pdf', type: file.mimeType || 'application/pdf' });
     formData.append('case_id', caseId);
+    formData.append('original_name', file.name || 'document.pdf');
 
     const res = await fetch(`${BASE_URL}/api/documents/upload`, {
       method: 'POST',
@@ -231,8 +232,9 @@ export const aiAPI = {
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
 export const notificationsAPI = {
-  list:        () => request('GET',   '/api/notifications'),
-  markAllRead: () => request('PATCH', '/api/notifications/read-all'),
+  list:        ()   => request('GET',   '/api/notifications'),
+  markAllRead: ()   => request('PATCH', '/api/notifications/read-all'),
+  markOneRead: (id) => request('PATCH', `/api/notifications/${id}/read`),
 };
 
 // ─── CLIENT PORTAL ────────────────────────────────────────────────────────

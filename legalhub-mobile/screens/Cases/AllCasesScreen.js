@@ -18,10 +18,10 @@ const C = {
 };
 
 const PRIORITY_STYLE = {
-  URGENT: { label: 'Urgent', color: C.red600,   bg: C.red50,   accent: '#EF4444' },
-  HIGH:   { label: 'High',   color: C.red600,   bg: C.red50,   accent: '#EF4444' },
+  URGENT: { label: 'Urgent', color: C.red600,   bg: C.red50,   accent: '#EF4444'  },
+  HIGH:   { label: 'High',   color: C.red600,   bg: C.red50,   accent: '#EF4444'  },
   MEDIUM: { label: 'Medium', color: C.amber600, bg: C.amber50, accent: C.amber500 },
-  NORMAL: { label: 'Normal', color: C.blue600,  bg: C.blue50,  accent: C.secondary },
+  NORMAL: { label: 'Normal', color: C.green600, bg: C.green50, accent: C.green500 },
   LOW:    { label: 'Low',    color: C.green600, bg: C.green50, accent: C.green500 },
 };
 

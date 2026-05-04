@@ -17,10 +17,10 @@ const COLORS = {
 
 const CASE_TYPES = ['Criminal Law', 'Civil Law', 'Corporate Law', 'Family Law', 'Real Estate Law', 'Immigration Law', 'Personal Injury', 'Intellectual Property'];
 const PRIORITIES = [
-  { label: 'Low',    color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
+  { label: 'Low',    color: '#16A34A', bg: '#F0FDF4', border: '#DCFCE7' },
   { label: 'Medium', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
   { label: 'High',   color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
-  { label: 'Urgent', color: '#7C3AED', bg: '#FAF5FF', border: '#DDD6FE' },
+  { label: 'Urgent', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
 ];
 const CASE_TYPE_MAP = {
   'Criminal Law': 'CRIMINAL', 'Civil Law': 'CIVIL',
