@@ -1,7 +1,7 @@
 // services/api.js
 import { getStoredToken, getStoredRefresh, storeTokens } from '../context/AuthContext';
 
-const BASE_URL = 'http://192.168.1.12:8000';
+const BASE_URL = 'http://192.168.1.19:8000';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const getAuthHeaders = async () => {
@@ -231,8 +231,11 @@ export const aiAPI = {
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
 export const notificationsAPI = {
-  list:        () => request('GET',   '/api/notifications'),
-  markAllRead: () => request('PATCH', '/api/notifications/read-all'),
+  list:         ()     => request('GET',   '/api/notifications'),
+  unreadCount:  ()     => request('GET',   '/api/notifications/unread-count'),
+  markAllRead:  ()     => request('PATCH', '/api/notifications/read-all'),
+  markOneRead:  (id)   => request('PATCH', `/api/notifications/${id}/read`),
+  createTest:   (body) => request('POST',  '/api/notifications/test', body),
 };
 
 // ─── CLIENT PORTAL ────────────────────────────────────────────────────────

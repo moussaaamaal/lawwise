@@ -454,13 +454,19 @@ export default function HomeScreen() {
   const [error,        setError]        = useState(null);
 
   // ── Chargement dashboard ─────────────────────────────────────────────────
+  const refreshUnreadCount = useCallback(() => {
+    notificationsAPI.unreadCount()
+      .then(data => setNotifCount(data?.count ?? 0))
+      .catch(() => {});
+  }, []);
+
   const loadDashboard = useCallback(async () => {
     setError(null);
     const [sRes, tRes, rRes, nRes, taskRes, docRes, cliRes] = await Promise.allSettled([
       dashboardAPI.stats(),
       dashboardAPI.today(),
       dashboardAPI.recentCases(),
-      notificationsAPI.list(),
+      notificationsAPI.unreadCount(),
       tasksAPI.list(),
       documentsAPI.list(),
       clientsAPI.list(),
@@ -477,8 +483,7 @@ export default function HomeScreen() {
     if (rRes.status === 'fulfilled') setRecentCases(rRes.value || []);
 
     if (nRes.status === 'fulfilled') {
-      const unread = (nRes.value || []).filter(n => !n.is_read).length;
-      setNotifCount(unread);
+      setNotifCount(nRes.value?.count ?? 0);
     }
 
     if (taskRes.status === 'fulfilled') {
@@ -714,7 +719,11 @@ export default function HomeScreen() {
   });
 
   const navigateTo = (screen) => setCurrentScreen(screen);
-  const goBack = () => setCurrentScreen(null);
+  const goBack = () => {
+    const prev = currentScreen;
+    setCurrentScreen(null);
+    if (prev === 'Notifications') refreshUnreadCount();
+  };
   const screenProps = { navigation: { goBack } };
 
   const firstName = user?.full_name?.split(' ')[0] || 'there';
