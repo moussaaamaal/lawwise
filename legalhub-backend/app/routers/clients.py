@@ -13,7 +13,9 @@ router = APIRouter(prefix="/api/clients", tags=["Clients"])
 
 class CreateClientRequest(BaseModel):
     first_name: str
-    last_name: Optional[str] = None
+
+    last_name: str
+
     email: EmailStr
     phone: Optional[str] = None
     whatsapp_number: Optional[str] = None

@@ -52,7 +52,9 @@ async def list_tasks(
 ):
     query = (
         supabase.table("task")
-        .select("*")
+
+        .select("*, case_file(id, title, case_number), app_user!task_assigned_to_fkey(id, full_name)")
+
         .eq("firm_id", current_user["firm_id"])
     )
     if case_id:
@@ -137,7 +139,9 @@ async def list_notes(
 ):
     query = (
         supabase.table("note")
-        .select("*")
+
+        .select("*, app_user!note_lawyer_id_fkey(id, full_name)")
+
         .eq("firm_id", current_user["firm_id"])
     )
     if case_id:

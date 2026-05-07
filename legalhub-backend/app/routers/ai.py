@@ -16,7 +16,11 @@ class DraftContractRequest(BaseModel):
     case_id: Optional[str] = None
 
 class CaseAssistantRequest(BaseModel):
+
     case_id: str
+
+   
+
     question: str
 
 class SuggestActionsRequest(BaseModel):
@@ -104,6 +108,7 @@ async def suggest_actions(body: SuggestActionsRequest, current_user=Depends(get_
 
 @router.post("/case-assistant")
 async def case_assistant(body: CaseAssistantRequest, current_user=Depends(get_lawyer)):
+
     case = supabase.table("case_file").select("*").eq("id", body.case_id).single().execute()
     if not case.data:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -119,6 +124,7 @@ async def case_assistant(body: CaseAssistantRequest, current_user=Depends(get_la
             "role": "user",
             "content": body.question
         }]
+
     )
     answer = response.choices[0].message.content
     return {"answer": answer}
