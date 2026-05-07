@@ -1,7 +1,7 @@
 // services/api.js
 import { getStoredToken, getStoredRefresh, storeTokens } from '../context/AuthContext';
 
-const BASE_URL = 'http://192.168.1.19:8000';
+const BASE_URL = 'http://192.168.1.13:8000';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const getAuthHeaders = async () => {
@@ -146,6 +146,22 @@ export const documentsAPI = {
     return data;
   },
 
+  voiceNoteAI: async (audioUri, partialData = null) => {
+    const token = await getStoredToken();
+    const formData = new FormData();
+    formData.append('file', { uri: audioUri, name: 'voice.m4a', type: 'audio/mp4' });
+    if (partialData) formData.append('partial_data', JSON.stringify(partialData));
+
+    const res = await fetch(`${BASE_URL}/api/documents/voice-note-ai`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Voice AI request failed');
+    return data;
+  },
+
   uploadVoice: async (audioUri, caseId) => {
     const token = await getStoredToken();
     const formData = new FormData();
@@ -240,13 +256,15 @@ export const notificationsAPI = {
 
 // ─── CLIENT PORTAL ────────────────────────────────────────────────────────
 export const clientPortalAPI = {
-  dashboard:    ()         => request('GET', '/api/client/dashboard'),
-  cases:        ()         => request('GET', '/api/client/cases'),
-  caseDetail:   (id)       => request('GET', `/api/client/cases/${id}`),
-  invoices:     (status)   => request('GET', `/api/client/invoices${status ? `?status=${status}` : ''}`),
-  invoiceDetail:(id)       => request('GET', `/api/client/invoices/${id}`),
-  documents:    ()         => request('GET', '/api/client/documents'),
-  appointments: ()         => request('GET', '/api/client/appointments'),
-  profile:      ()         => request('GET', '/api/client/profile'),
-  activity:     ()         => request('GET', '/api/client/activity'),
+  dashboard:    ()                    => request('GET',  '/api/client/dashboard'),
+  cases:        ()                    => request('GET',  '/api/client/cases'),
+  caseDetail:   (id)                  => request('GET',  `/api/client/cases/${id}`),
+  invoices:     (status)              => request('GET',  `/api/client/invoices${status ? `?status=${status}` : ''}`),
+  invoiceDetail:(id)                  => request('GET',  `/api/client/invoices/${id}`),
+  payInvoice:   (invoiceId, method)   => request('POST', `/api/client/invoices/${invoiceId}/pay`, { payment_method: method }),
+  documents:    (caseId)              => request('GET',  `/api/client/documents${caseId ? `?case_id=${caseId}` : ''}`),
+  appointments:   ()     => request('GET',  '/api/client/appointments'),
+  requestMeeting: (body) => request('POST', '/api/client/appointments/request', body),
+  profile:        ()     => request('GET',  '/api/client/profile'),
+  activity:       ()     => request('GET',  '/api/client/activity'),
 };

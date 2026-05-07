@@ -9,9 +9,16 @@ router = APIRouter(prefix="/api/payments", tags=["Payments"])
 
 # ─── Schemas ────────────────────────────────────────────
 
+from typing import Optional
+
 class StripePaymentRequest(BaseModel):
-    invoice_id: str
-    currency: str = "usd"
+    invoice_id:  str
+    currency:    str = "usd"
+    card_number: Optional[str] = None
+    card_name:   Optional[str] = None
+    exp_month:   Optional[str] = None
+    exp_year:    Optional[str] = None
+    cvc:         Optional[str] = None
 
 class SadadPaymentRequest(BaseModel):
     invoice_id: str
@@ -31,8 +38,8 @@ def _mark_invoice_paid(invoice_id: str, gateway: str, transaction_id: str):
         "paid_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", invoice_id).execute()
 
-    invoice = supabase.table("invoice").select("client_id, total_amount, currency").eq("id", invoice_id).single().execute()
-    if invoice.data:
+    invoice = supabase.table("invoice").select("client_id, total_amount, currency").eq("id", invoice_id).maybe_single().execute()
+    if invoice and invoice.data:
         supabase.table("payment").insert({
             "invoice_id":             invoice_id,
             "client_id":              invoice.data["client_id"],
@@ -52,33 +59,66 @@ async def create_stripe_payment(body: StripePaymentRequest, current_user=Depends
         supabase.table("invoice")
         .select("*")
         .eq("id", body.invoice_id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not invoice.data:
+    if not invoice or not invoice.data:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     inv = invoice.data
     if inv["status"] == "PAID":
         raise HTTPException(status_code=400, detail="Invoice already paid")
 
-    stripe = _get_stripe()
-    amount_cents = int(inv["total_amount"] * 100)
+    stripe_lib = _get_stripe()
+    amount_cents = int(float(inv["total_amount"]) * 100)
 
-    payment_intent = stripe.PaymentIntent.create(
+    # If card details are provided, tokenize + confirm in one step
+    if body.card_number and body.exp_month and body.exp_year and body.cvc:
+        try:
+            exp_year = int(body.exp_year)
+            if exp_year < 100:
+                exp_year += 2000
+
+            pm = stripe_lib.PaymentMethod.create(
+                type="card",
+                card={
+                    "number":    body.card_number.replace(" ", ""),
+                    "exp_month": int(body.exp_month),
+                    "exp_year":  exp_year,
+                    "cvc":       body.cvc,
+                },
+            )
+
+            payment_intent = stripe_lib.PaymentIntent.create(
+                amount=amount_cents,
+                currency=body.currency.lower(),
+                payment_method=pm["id"],
+                confirm=True,
+                metadata={"invoice_id": body.invoice_id, "firm_id": inv.get("firm_id", "")},
+            )
+
+            if payment_intent["status"] == "succeeded":
+                _mark_invoice_paid(body.invoice_id, "STRIPE", payment_intent["id"])
+                return {"status": "succeeded", "message": "Payment successful"}
+
+            raise HTTPException(status_code=400, detail=f"Payment status: {payment_intent['status']}")
+
+        except stripe_lib.error.CardError as e:
+            raise HTTPException(status_code=400, detail=e.user_message or str(e))
+        except stripe_lib.error.StripeError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # No card details — return client_secret for SDK-based confirmation
+    payment_intent = stripe_lib.PaymentIntent.create(
         amount=amount_cents,
         currency=body.currency.lower(),
-        metadata={
-            "invoice_id": body.invoice_id,
-            "firm_id":    inv["firm_id"],
-        },
+        metadata={"invoice_id": body.invoice_id, "firm_id": inv.get("firm_id", "")},
     )
-
     return {
-        "client_secret": payment_intent["client_secret"],
-        "payment_intent_id": payment_intent["id"],
-        "amount": inv["total_amount"],
-        "currency": body.currency,
+        "client_secret":      payment_intent["client_secret"],
+        "payment_intent_id":  payment_intent["id"],
+        "amount":             inv["total_amount"],
+        "currency":           body.currency,
     }
 
 # ─── POST /api/payments/stripe/confirm ──────────────────

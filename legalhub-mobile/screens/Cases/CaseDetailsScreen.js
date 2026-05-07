@@ -1822,7 +1822,7 @@ const TimelineTab = ({ timeline: propTimeline = [], loading = false }) => {
         </View>
       )}
 
-      {!loading && groups.map((group) => (
+      {!loading && groups.map((group, gi) => (
         <View key={group.day}>
           {/* Day label */}
           <View style={tl.dayRow}>
@@ -1833,30 +1833,23 @@ const TimelineTab = ({ timeline: propTimeline = [], loading = false }) => {
             <View style={tl.dayLine} />
           </View>
 
-          {/* Events */}
-          {group.entries.map((item, idx) => (
-            <View key={item.id} style={tl.entryRow}>
-              {/* Spine */}
-              <View style={tl.spine}>
-                <View style={[tl.dot, { backgroundColor: item.bg, shadowColor: item.accent }]}>
-                  <FontAwesome5 name={item.icon} size={13} color={item.color} />
+          {/* Events — card list */}
+          <View style={tl.groupCard}>
+            {group.entries.map((item, idx) => (
+              <View key={item.id} style={[tl.entryRow, idx < group.entries.length - 1 && tl.entryBorder]}>
+                <View style={[tl.dot, { backgroundColor: item.bg }]}>
+                  <FontAwesome5 name={item.icon} size={12} color={item.color} />
                 </View>
-                {idx < group.entries.length - 1 && (
-                  <View style={tl.spineLineWrap}>
-                    <View style={[tl.spineLine, { borderColor: item.accent + '30' }]} />
-                  </View>
-                )}
-              </View>
-
-              {/* Card */}
-              <View style={[tl.card, { borderLeftColor: item.accent }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <View style={tl.entryBody}>
                   <Text style={tl.actionTxt} numberOfLines={2}>{item.action}</Text>
-                  <Text style={tl.timeTxt}>{item.time}</Text>
+                  {!!item.actor && item.actor !== 'System' && (
+                    <Text style={tl.actorTxt}>by {item.actor}</Text>
+                  )}
                 </View>
+                <Text style={tl.timeTxt}>{item.time}</Text>
               </View>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
       ))}
 
@@ -1880,27 +1873,26 @@ const tl = StyleSheet.create({
   emptySub:     { fontSize: 13, color: C.g400, textAlign: 'center', lineHeight: 19 },
 
   // Day separator
-  dayRow:       { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginVertical: 12 },
+  dayRow:       { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginVertical: 10 },
   dayLine:      { flex: 1, height: 1, backgroundColor: C.g200 },
-  dayPill:      { paddingHorizontal: 14, paddingVertical: 4, borderRadius: 20, backgroundColor: C.g100, marginHorizontal: 10 },
-  dayTxt:       { fontSize: 11, fontWeight: '700', color: C.g500 },
+  dayPill:      { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, backgroundColor: C.g100, marginHorizontal: 10 },
+  dayTxt:       { fontSize: 11, fontWeight: '700', color: C.g500, textTransform: 'uppercase', letterSpacing: 0.4 },
+
+  // Group card
+  groupCard:    { marginHorizontal: 16, marginBottom: 8, backgroundColor: C.white, borderRadius: 18, borderWidth: 1, borderColor: C.g100, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
 
   // Entry row
-  entryRow:     { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 2 },
+  entryRow:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 13 },
+  entryBorder:  { borderBottomWidth: 1, borderBottomColor: C.g100 },
+  entryBody:    { flex: 1, marginLeft: 12, marginRight: 8 },
 
-  // Spine
-  spine:        { width: 44, alignItems: 'center' },
-  dot:          { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.18, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
-  spineLineWrap:{ flex: 1, alignItems: 'center', paddingVertical: 3 },
-  spineLine:    { width: 2, flex: 1, borderLeftWidth: 2, borderStyle: 'dashed', minHeight: 16 },
+  // Dot
+  dot:          { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
 
-  // Card
-  card:         { flex: 1, marginLeft: 12, marginBottom: 10, backgroundColor: C.white, borderRadius: 16, padding: 14, borderLeftWidth: 3, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  actionTxt:    { flex: 1, fontSize: 13, fontWeight: '700', color: C.dark, marginRight: 8, lineHeight: 18 },
-  timeTxt:      { fontSize: 10, color: C.g400, flexShrink: 0, marginTop: 1 },
-  actorRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  actorDot:     { width: 6, height: 6, borderRadius: 3 },
-  actorTxt:     { fontSize: 11, color: C.g500, fontWeight: '600' },
+  // Text
+  actionTxt:    { fontSize: 13, fontWeight: '700', color: C.dark, lineHeight: 18 },
+  actorTxt:     { fontSize: 11, color: C.g500, marginTop: 2 },
+  timeTxt:      { fontSize: 11, color: C.g400, flexShrink: 0 },
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

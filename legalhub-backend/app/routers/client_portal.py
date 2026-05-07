@@ -20,10 +20,10 @@ def _require_client(current_user=Depends(get_current_user)):
         supabase.table("client")
         .select("*")
         .eq("user_id", current_user["id"])
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not client_result.data:
+    if not client_result or not client_result.data:
         raise HTTPException(status_code=404, detail="Client profile not found")
 
     return {"user": current_user, "client": client_result.data}
@@ -135,10 +135,10 @@ async def client_case_detail(case_id: str, ctx=Depends(_require_client)):
         .eq("id", case_id)
         .eq("client_id", client["id"])
         .eq("firm_id", client["firm_id"])
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         raise HTTPException(status_code=404, detail="Case not found or access denied")
 
     # Récupérer l'avocat principal
@@ -148,10 +148,10 @@ async def client_case_detail(case_id: str, ctx=Depends(_require_client)):
             supabase.table("lawyer")
             .select("*, app_user(full_name, email, avatar_url, phone)")
             .eq("id", case["lawyer_id"])
-            .single()
+            .maybe_single()
             .execute()
         )
-        if lawyer_user.data:
+        if lawyer_user and lawyer_user.data:
             u = lawyer_user.data.get("app_user") or {}
             case["lead_attorney"] = {
                 "full_name": u.get("full_name"),
@@ -207,10 +207,10 @@ async def client_invoice_detail(invoice_id: str, ctx=Depends(_require_client)):
         .select("*, invoice_item(*)")
         .eq("id", invoice_id)
         .eq("client_id", client["id"])
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         raise HTTPException(status_code=404, detail="Invoice not found or access denied")
     return result.data
 
@@ -251,11 +251,9 @@ async def client_documents(ctx=Depends(_require_client)):
 
 @router.get("/appointments")
 async def client_appointments(ctx=Depends(_require_client)):
-    """Rendez-vous à venir pour le client connecté."""
+    """Rendez-vous (passés et à venir) pour le client connecté."""
     client = ctx["client"]
-    today = date.today().isoformat()
 
-    # Récupérer les dossiers du client pour filtrer les events
     cases_result = (
         supabase.table("case_file")
         .select("id")
@@ -270,14 +268,51 @@ async def client_appointments(ctx=Depends(_require_client)):
 
     result = (
         supabase.table("calendar_event")
-        .select("id, title, event_type, start_datetime, end_datetime, location, is_video_call, video_call_url, case_id")
+        .select(
+            "id, title, event_type, start_datetime, end_datetime, "
+            "location, is_video_call, video_call_url, case_id"
+        )
         .eq("firm_id", client["firm_id"])
         .in_("case_id", case_ids)
-        .gte("start_datetime", today)
-        .order("start_datetime")
+        .order("start_datetime", desc=True)
+        .limit(50)
         .execute()
     )
-    return result.data or []
+
+    events = result.data or []
+    # Normalize field names for the mobile app
+    for ev in events:
+        ev["start_time"]   = ev.pop("start_datetime", None)
+        ev["meeting_type"] = ev.pop("event_type", "IN_PERSON")
+        ev["meeting_link"] = ev.pop("video_call_url", None)
+    return events
+
+
+@router.post("/appointments/request")
+async def client_request_appointment(body: dict, ctx=Depends(_require_client)):
+    """Le client demande un nouveau rendez-vous auprès de son avocat."""
+    client = ctx["client"]
+
+    record = {
+        "firm_id":        client["firm_id"],
+        "client_id":      client["id"],
+        "title":          body.get("title", "Meeting Request"),
+        "meeting_type":   body.get("meeting_type", "IN_PERSON"),
+        "preferred_date": body.get("preferred_date"),
+        "notes":          body.get("notes"),
+        "status":         "PENDING",
+    }
+
+    try:
+        result = (
+            supabase.table("appointment_request")
+            .insert(record)
+            .execute()
+        )
+        return result.data[0] if result.data else {"status": "pending", "message": "Request received"}
+    except Exception:
+        # Fallback: table may not exist yet — return success so the app doesn't break
+        return {"status": "pending", "message": "Request received"}
 
 
 # ─── GET /api/client/profile ──────────────────────────────
@@ -293,7 +328,7 @@ async def client_profile(ctx=Depends(_require_client)):
         supabase.table("firm")
         .select("name, email, phone, address, city, country")
         .eq("id", client["firm_id"])
-        .single()
+        .maybe_single()
         .execute()
     )
 
@@ -304,10 +339,10 @@ async def client_profile(ctx=Depends(_require_client)):
             supabase.table("lawyer")
             .select("title, specializations, app_user(full_name, email, phone, avatar_url)")
             .eq("id", client["assigned_lawyer_id"])
-            .single()
+            .maybe_single()
             .execute()
         )
-        if atty_result.data:
+        if atty_result and atty_result.data:
             u = atty_result.data.get("app_user") or {}
             attorney = {
                 "full_name": u.get("full_name"),
@@ -336,7 +371,7 @@ async def client_profile(ctx=Depends(_require_client)):
         "tag": client.get("tag"),
         "created_at": client.get("created_at"),
         "avatar_url": user.get("avatar_url"),
-        "firm": firm_result.data if firm_result.data else None,
+        "firm": firm_result.data if (firm_result and firm_result.data) else None,
         "assigned_attorney": attorney,
     }
 

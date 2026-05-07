@@ -4,12 +4,17 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 
-import ClientDashboard       from '../screens/Client/ClientDashboard';
-import ClientCasesScreen     from '../screens/Client/ClientCasesScreen';
-import ClientCaseDetailScreen from '../screens/Client/ClientCaseDetailScreen';
-import ClientInvoicesScreen  from '../screens/Client/ClientInvoicesScreen';
-import ClientDocumentsScreen from '../screens/Client/ClientDocumentsScreen';
-import ClientProfileScreen   from '../screens/Client/ClientProfileScreen';
+import ClientDashboard              from '../screens/Client/ClientDashboard';
+import ClientCasesScreen            from '../screens/Client/ClientCasesScreen';
+import ClientCaseDetailScreen       from '../screens/Client/ClientCaseDetailScreen';
+import ClientInvoicesScreen         from '../screens/Client/ClientInvoicesScreen';
+import ClientInvoiceDetailScreen    from '../screens/Client/ClientInvoiceDetailScreen';
+import ClientDocumentsScreen        from '../screens/Client/ClientDocumentsScreen';
+import ClientAppointmentsScreen     from '../screens/Client/ClientAppointmentsScreen';
+import ClientProfileScreen          from '../screens/Client/ClientProfileScreen';
+import ClientSettingsScreen         from '../screens/Client/ClientSettingsScreen';
+import ClientNotificationsScreen    from '../screens/Client/ClientNotificationsScreen';
+import ClientActivityScreen         from '../screens/Client/ClientActivityScreen';
 
 const Tab   = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -20,6 +25,17 @@ const GRAY_200 = '#E5E7EB';
 const GRAY_400 = '#9CA3AF';
 
 // ─── Stacks ──────────────────────────────────────────────────────────────────
+
+function HomeStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ClientDashboard"       component={ClientDashboard} />
+      <Stack.Screen name="ClientNotifications"   component={ClientNotificationsScreen} />
+      <Stack.Screen name="ClientActivity"        component={ClientActivityScreen} />
+      <Stack.Screen name="ClientDocuments"       component={ClientDocumentsScreen} />
+    </Stack.Navigator>
+  );
+}
 
 function CasesStack() {
   return (
@@ -33,7 +49,25 @@ function CasesStack() {
 function InvoicesStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="ClientInvoicesList" component={ClientInvoicesScreen} />
+      <Stack.Screen name="ClientInvoicesList"  component={ClientInvoicesScreen} />
+      <Stack.Screen name="ClientInvoiceDetail" component={ClientInvoiceDetailScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function AppointmentsStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ClientAppointmentsList" component={ClientAppointmentsScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function ProfileStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ClientProfileMain" component={ClientProfileScreen} />
+      <Stack.Screen name="ClientSettings"    component={ClientSettingsScreen} />
     </Stack.Navigator>
   );
 }
@@ -49,8 +83,8 @@ function TabIcon({ routeName, focused }) {
       return <FontAwesome5 name="briefcase" size={20} color={color} />;
     case 'ClientInvoices':
       return <FontAwesome5 name="file-invoice-dollar" size={20} color={color} />;
-    case 'ClientDocuments':
-      return <FontAwesome5 name="file-alt" size={20} color={color} />;
+    case 'ClientAppointments':
+      return <FontAwesome5 name="calendar-alt" size={20} color={color} />;
     case 'ClientProfile':
       return <FontAwesome5 name="user" size={20} color={color} />;
     default:
@@ -101,11 +135,11 @@ export default function ClientNavigator() {
       tabBar={(props) => <ClientTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="ClientHome"      component={ClientDashboard}    options={{ tabBarLabel: 'Home'      }} />
-      <Tab.Screen name="ClientCases"     component={CasesStack}         options={{ tabBarLabel: 'Cases'     }} />
-      <Tab.Screen name="ClientInvoices"  component={InvoicesStack}      options={{ tabBarLabel: 'Invoices'  }} />
-      <Tab.Screen name="ClientDocuments" component={ClientDocumentsScreen} options={{ tabBarLabel: 'Documents' }} />
-      <Tab.Screen name="ClientProfile"   component={ClientProfileScreen} options={{ tabBarLabel: 'Profile'   }} />
+      <Tab.Screen name="ClientHome"         component={HomeStack}         options={{ tabBarLabel: 'Home'         }} />
+      <Tab.Screen name="ClientCases"        component={CasesStack}        options={{ tabBarLabel: 'Cases'        }} />
+      <Tab.Screen name="ClientInvoices"     component={InvoicesStack}     options={{ tabBarLabel: 'Invoices'     }} />
+      <Tab.Screen name="ClientAppointments" component={AppointmentsStack} options={{ tabBarLabel: 'Appointments' }} />
+      <Tab.Screen name="ClientProfile"      component={ProfileStack}      options={{ tabBarLabel: 'Profile'      }} />
     </Tab.Navigator>
   );
 }
