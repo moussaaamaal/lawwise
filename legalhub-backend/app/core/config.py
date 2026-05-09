@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     # ─── OpenAI (optionnel en dev) ─────────────────────
     OPENAI_API_KEY: Optional[str] = None
 
-    # ─── Mistral AI (voice assistant) ─────────────────
-    MISTRAL_API_KEY: Optional[str] = None
-
     # ─── Stripe (optionnel en dev) ─────────────────────
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None

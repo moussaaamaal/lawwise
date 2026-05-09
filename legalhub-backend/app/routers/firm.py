@@ -29,11 +29,6 @@ class UpdateBrandingRequest(BaseModel):
 class UpdateTeamRoleRequest(BaseModel):
     role: str  # LAWYER | FIRM_ADMIN
 
-class UpdateTeamMemberRequest(BaseModel):
-    full_name: Optional[str] = None
-    phone:     Optional[str] = None
-    role:      Optional[str] = None
-
 # ─── GET /api/firm/profile ──────────────────────────────
 
 @router.get("/profile")
@@ -65,29 +60,10 @@ async def update_firm_profile(body: UpdateFirmProfileRequest, current_user=Depen
     )
     return result.data[0]
 
-# ─── GET /api/firm/team/case-counts ─────────────────────
-
-@router.get("/team/case-counts")
-async def get_team_case_counts(current_user=Depends(get_lawyer)):
-    active_statuses = ["NEW", "INVESTIGATION", "PRE_TRIAL", "TRIAL", "APPEAL"]
-    result = (
-        supabase.table("case_file")
-        .select("lawyer_id")
-        .eq("firm_id", current_user["firm_id"])
-        .in_("status", active_statuses)
-        .execute()
-    )
-    counts: dict[str, int] = {}
-    for row in (result.data or []):
-        lid = row.get("lawyer_id")
-        if lid:
-            counts[lid] = counts.get(lid, 0) + 1
-    return counts
-
 # ─── GET /api/firm/team ─────────────────────────────────
 
 @router.get("/team")
-async def list_team(current_user=Depends(get_lawyer)):
+async def list_team(current_user=Depends(get_firm_admin)):
     result = (
         supabase.table("app_user")
         .select("id, full_name, email, role, phone, avatar_url, is_active, last_login_at, created_at")
@@ -97,27 +73,6 @@ async def list_team(current_user=Depends(get_lawyer)):
         .execute()
     )
     return result.data
-
-# ─── PUT /api/firm/team/:userId ─────────────────────────
-
-@router.put("/team/{user_id}")
-async def update_team_member(user_id: str, body: UpdateTeamMemberRequest, current_user=Depends(get_firm_admin)):
-    data = body.model_dump(exclude_none=True)
-    if not data:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    if "role" in data and data["role"] not in ("LAWYER", "FIRM_ADMIN"):
-        raise HTTPException(status_code=400, detail="Role must be LAWYER or FIRM_ADMIN")
-
-    result = (
-        supabase.table("app_user")
-        .update(data)
-        .eq("id", user_id)
-        .eq("firm_id", current_user["firm_id"])
-        .execute()
-    )
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Team member not found")
-    return result.data[0]
 
 # ─── PUT /api/firm/team/:userId/role ────────────────────
 
