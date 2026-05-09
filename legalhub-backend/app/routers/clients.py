@@ -243,3 +243,27 @@ async def get_client_invoices(client_id: str, current_user=Depends(get_lawyer)):
         .execute()
     )
     return result.data
+
+# ─── GET /api/clients/:id/documents ─────────────────────
+
+@router.get("/{client_id}/documents")
+async def get_client_documents(client_id: str, current_user=Depends(get_lawyer)):
+    cases = (
+        supabase.table("case_file")
+        .select("id")
+        .eq("client_id", client_id)
+        .eq("firm_id", current_user["firm_id"])
+        .execute()
+    )
+    case_ids = [c["id"] for c in (cases.data or [])]
+    if not case_ids:
+        return []
+    result = (
+        supabase.table("document")
+        .select("*, case_file(id, title, case_number)")
+        .eq("firm_id", current_user["firm_id"])
+        .in_("case_id", case_ids)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data
