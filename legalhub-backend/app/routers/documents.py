@@ -3,7 +3,9 @@ import re
 import unicodedata
 import logging
 
+
 from urllib.parse import unquote
+
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.core.dependencies import get_lawyer, get_current_user
@@ -57,7 +59,9 @@ async def list_documents(
     query = (
         supabase.table("document")
 
+
         .select("*, case_file(id, title, case_number)")
+
 
         .eq("firm_id", current_user["firm_id"])
     )
@@ -87,24 +91,24 @@ async def upload_document(
     file_type    = _detect_file_type(safe_name)
     content_type = file.content_type or "application/octet-stream"
 
-    # Ensure bucket exists (create if missing)
-    try:
-        supabase_admin.storage.create_bucket("documents", options={"public": True})
-        logger.info("Storage bucket 'documents' created successfully")
-    except Exception as e:
-        err = str(e).lower()
-        logger.info(f"create_bucket result: {e!r}")
-        # Ignore if bucket already exists (various error formats from Supabase)
-        if not any(k in err for k in ("already exists", "409", "duplicate", "already_exists", "violates unique")):
-            logger.error(f"Storage bucket creation failed: {e!r}")
-            raise HTTPException(status_code=500, detail=f"Storage setup failed: {e}")
-
+    # Bucket creation is handled at app startup (_ensure_storage_buckets in main.py)
     storage_path = f"{current_user['firm_id']}/{case_id}/{uuid.uuid4()}_{safe_name}"
-    supabase_admin.storage.from_("documents").upload(
-        storage_path,
-        file_content,
-        file_options={"content-type": content_type},
-    )
+    try:
+        supabase_admin.storage.from_("documents").upload(
+            storage_path,
+            file_content,
+            file_options={"content-type": content_type},
+        )
+    except Exception as e:
+        err_str = str(e)
+        logger.error(f"Storage upload failed: {err_str!r}")
+        if "403" in err_str or "Unauthorized" in err_str or "Invalid Compact JWS" in err_str:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage service unavailable — check SUPABASE_SERVICE_ROLE_KEY in .env"
+            )
+        raise HTTPException(status_code=500, detail=f"File upload failed: {e}")
+
     storage_url = supabase_admin.storage.from_("documents").get_public_url(storage_path)
 
     result = supabase.table("document").insert({
@@ -141,7 +145,17 @@ async def upload_voice_note(
     file_name     = file.filename
 
     storage_path = f"{current_user['firm_id']}/{case_id}/voice/{uuid.uuid4()}_{file_name}"
-    supabase_admin.storage.from_("documents").upload(storage_path, audio_content)
+    try:
+        supabase_admin.storage.from_("documents").upload(storage_path, audio_content)
+    except Exception as e:
+        err_str = str(e)
+        logger.error(f"Voice note storage upload failed: {err_str!r}")
+        if "403" in err_str or "Unauthorized" in err_str or "Invalid Compact JWS" in err_str:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage service unavailable — check SUPABASE_SERVICE_ROLE_KEY in .env"
+            )
+        raise HTTPException(status_code=500, detail=f"Voice note upload failed: {e}")
     storage_url = supabase_admin.storage.from_("documents").get_public_url(storage_path)
 
     # Save the audio file record

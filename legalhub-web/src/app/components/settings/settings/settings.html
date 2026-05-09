@@ -1,3 +1,12 @@
+<!-- ══ TOAST ══ -->
+@if (toast()) {
+  <div class="fixed top-5 right-5 z-50 flex items-center space-x-3 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium transition-all"
+    [ngClass]="toast()!.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'">
+    <i [ngClass]="toast()!.type === 'success' ? 'fa-solid fa-check-circle' : 'fa-solid fa-times-circle'"></i>
+    <span>{{ toast()!.msg }}</span>
+  </div>
+}
+
 <!-- ══ TOPBAR ══ -->
 <header class="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
   <div class="px-8 py-4 flex items-center justify-between">
@@ -9,22 +18,9 @@
       </div>
     </div>
     <div class="flex items-center space-x-3">
-      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
-        <i class="fa-solid fa-bell text-xl"></i>
-        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-      </button>
-      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
-        <i class="fa-solid fa-envelope text-xl"></i>
-        <span class="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
-      </button>
-      <div class="h-8 w-px bg-gray-300"></div>
       <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
         <i class="fa-solid fa-download text-gray-600"></i>
         <span class="text-sm text-gray-700">Export Settings</span>
-      </button>
-      <button class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
-        <i class="fa-solid fa-save"></i>
-        <span class="font-medium">Save Changes</span>
       </button>
     </div>
   </div>
@@ -39,9 +35,15 @@
         <h1 class="text-3xl font-bold text-gray-900">Configuration &amp; Settings</h1>
         <p class="text-gray-600 mt-1">Manage your office profile, subscription, team roles, and system preferences</p>
       </div>
-      <span class="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-medium">
-        <i class="fa-solid fa-check-circle mr-1"></i>All Changes Saved
-      </span>
+      @if (loading()) {
+        <span class="text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full font-medium">
+          <i class="fa-solid fa-spinner fa-spin mr-1"></i>Loading…
+        </span>
+      } @else {
+        <span class="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-medium">
+          <i class="fa-solid fa-check-circle mr-1"></i>Ready
+        </span>
+      }
     </div>
   </section>
 
@@ -67,11 +69,9 @@
 
         <!-- Form -->
         <div class="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200">
-          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-            <div>
-              <h2 class="text-lg font-bold text-gray-900">Office Information</h2>
-              <p class="text-sm text-gray-600 mt-1">Legal identity and contact details of your firm</p>
-            </div>
+          <div class="p-6 border-b border-gray-200">
+            <h2 class="text-lg font-bold text-gray-900">Office Information</h2>
+            <p class="text-sm text-gray-600 mt-1">Legal identity and contact details of your firm</p>
           </div>
           <div class="p-6 space-y-6">
 
@@ -130,15 +130,18 @@
             <div class="grid grid-cols-3 gap-4">
               <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">City</label>
-                <input type="text" [ngModel]="city()" (ngModelChange)="city.set($event)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <input type="text" [ngModel]="city()" (ngModelChange)="city.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
               </div>
               <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">State</label>
-                <input type="text" [ngModel]="state()" (ngModelChange)="state.set($event)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Country / Region</label>
+                <input type="text" [ngModel]="state()" (ngModelChange)="state.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
               </div>
               <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">ZIP Code</label>
-                <input type="text" [ngModel]="zip()" (ngModelChange)="zip.set($event)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <input type="text" [ngModel]="zip()" (ngModelChange)="zip.set($event)"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
               </div>
             </div>
 
@@ -167,14 +170,15 @@
               <label class="block text-sm font-semibold text-gray-700 mb-2">Practice Areas</label>
               <div class="flex flex-wrap gap-2 mb-3">
                 @for (area of practiceAreas(); track area; let i = $index) {
-                  <span class="px-3 py-1.5 rounded-full text-sm font-medium flex items-center space-x-2" [ngClass]="practiceAreaColors[i % practiceAreaColors.length]">
+                  <span class="px-3 py-1.5 rounded-full text-sm font-medium flex items-center space-x-2"
+                    [ngClass]="practiceAreaColors[i % practiceAreaColors.length]">
                     <span>{{ area }}</span>
                     <button (click)="removePracticeArea(i)" class="hover:opacity-70"><i class="fa-solid fa-times text-xs"></i></button>
                   </span>
                 }
               </div>
               <div class="flex items-center space-x-2">
-                <input type="text" placeholder="Add practice area..." [ngModel]="newPracticeArea()" (ngModelChange)="newPracticeArea.set($event)"
+                <input type="text" placeholder="Add practice area…" [ngModel]="newPracticeArea()" (ngModelChange)="newPracticeArea.set($event)"
                   (keydown.enter)="addPracticeArea()"
                   class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
                 <button (click)="addPracticeArea()" class="px-4 py-2.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600">
@@ -191,8 +195,13 @@
             </div>
 
             <div class="flex justify-end pt-2">
-              <button class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md transition-all">
-                <i class="fa-solid fa-save mr-2"></i>Save Profile
+              <button (click)="saveProfile()" [disabled]="profileSaving()"
+                class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md transition-all disabled:opacity-70 flex items-center space-x-2">
+                @if (profileSaving()) {
+                  <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+                } @else {
+                  <i class="fa-solid fa-save"></i><span>Save Profile</span>
+                }
               </button>
             </div>
           </div>
@@ -211,10 +220,11 @@
             </button>
             <p class="text-xs text-gray-500 mt-3 text-center">Recommended: 512×512px, PNG or SVG</p>
           </div>
+
           <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h3 class="text-lg font-bold text-gray-900 mb-4">Quick Stats</h3>
             <div class="space-y-4">
-              @for (s of quickStats; track s.label; let last = $last) {
+              @for (s of quickStats(); track s.label; let last = $last) {
                 <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-3 border-b border-gray-100'">
                   <span class="text-sm text-gray-600">{{ s.label }}</span>
                   <span class="text-lg font-bold text-gray-900">{{ s.value }}</span>
@@ -222,13 +232,19 @@
               }
             </div>
           </div>
+
           <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white">
             <div class="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
               <i class="fa-solid fa-certificate text-2xl"></i>
             </div>
             <h3 class="text-lg font-bold mb-2">Verified Office</h3>
             <p class="text-sm text-blue-100 mb-4">Your office profile is verified and trusted</p>
-            <div class="flex items-center space-x-2 text-sm"><i class="fa-solid fa-check-circle"></i><span>Verified since 2018</span></div>
+            @if (officeCode()) {
+              <div class="mt-2 bg-white bg-opacity-10 rounded-lg px-3 py-2 text-sm font-mono tracking-widest text-center">
+                {{ officeCode() }}
+              </div>
+              <p class="text-xs text-blue-200 mt-1 text-center">Office invite code</p>
+            }
           </div>
         </div>
       </div>
@@ -272,14 +288,15 @@
                 </div>
               }
             </div>
+
             <div class="grid grid-cols-3 gap-6">
               <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
                 <h3 class="text-sm font-semibold text-gray-700 mb-4">Billing Information</h3>
                 <div class="space-y-3">
-                  <div class="flex justify-between"><span class="text-sm text-gray-600">Billing Cycle</span><span class="text-sm font-medium">Monthly</span></div>
-                  <div class="flex justify-between"><span class="text-sm text-gray-600">Next Billing Date</span><span class="text-sm font-medium">Dec 15, 2024</span></div>
-                  <div class="flex justify-between"><span class="text-sm text-gray-600">Amount Due</span><span class="text-sm font-medium">$399.00</span></div>
-                  <div class="flex justify-between pt-3 border-t border-gray-300"><span class="text-sm text-gray-600">Payment Method</span><span class="text-sm font-medium">•••• 4242</span></div>
+                  <div class="flex justify-between"><span class="text-sm text-gray-600">Billing Cycle</span><span class="text-sm font-medium">{{ subscriptionBillingCycle() }}</span></div>
+                  <div class="flex justify-between"><span class="text-sm text-gray-600">Next Billing Date</span><span class="text-sm font-medium">{{ subscriptionNextBilling() }}</span></div>
+                  <div class="flex justify-between"><span class="text-sm text-gray-600">Amount Due</span><span class="text-sm font-medium">{{ subscriptionAmountDue() }}</span></div>
+                  <div class="flex justify-between pt-3 border-t border-gray-300"><span class="text-sm text-gray-600">Payment Method</span><span class="text-sm font-medium">{{ subscriptionPaymentMethod() }}</span></div>
                 </div>
                 <button class="w-full mt-4 px-4 py-2 border border-gray-300 rounded-lg hover:bg-white text-sm font-medium">
                   <i class="fa-solid fa-pen-to-square mr-2"></i>Update Payment
@@ -501,8 +518,13 @@
           </div>
 
           <div class="flex justify-end mt-6">
-            <button class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md">
-              <i class="fa-solid fa-save mr-2"></i>Save Branding
+            <button (click)="saveBranding()" [disabled]="brandingSaving()"
+              class="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium text-sm hover:shadow-md disabled:opacity-70 flex items-center space-x-2">
+              @if (brandingSaving()) {
+                <i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>
+              } @else {
+                <i class="fa-solid fa-save"></i><span>Save Branding</span>
+              }
             </button>
           </div>
         </div>
@@ -524,58 +546,81 @@
           </button>
         </div>
         <div class="p-6">
-          <div class="mb-6 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <div class="relative">
-                <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="text" placeholder="Search team members..." class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 w-72">
-              </div>
-              <select class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-                <option>All Roles</option><option>Senior Partner</option><option>Associate</option><option>Secretary</option><option>Paralegal</option>
-              </select>
-              <select class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
-                <option>All Status</option><option>Active</option><option>Inactive</option><option>Pending</option>
-              </select>
+          <div class="mb-6 flex items-center space-x-3">
+            <div class="relative">
+              <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <input type="text" placeholder="Search team members…"
+                [ngModel]="teamSearch()" (ngModelChange)="teamSearch.set($event)"
+                class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 w-72">
             </div>
+            <select [ngModel]="teamRoleFilter()" (ngModelChange)="teamRoleFilter.set($event)"
+              class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              @for (r of teamMemberRoles; track r) { <option>{{ r }}</option> }
+            </select>
+            <select [ngModel]="teamStatusFilter()" (ngModelChange)="teamStatusFilter.set($event)"
+              class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              @for (s of teamMemberStatuses; track s) { <option>{{ s }}</option> }
+            </select>
           </div>
-          <div class="overflow-x-auto">
-            <table class="w-full">
-              <thead class="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th class="px-6 py-4 text-left"><input type="checkbox" class="rounded border-gray-300"></th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Team Member</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Role</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Cases</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Last Active</th>
-                  <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-100">
-                @for (m of teamMembers; track m.id) {
-                  <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4"><input type="checkbox" class="rounded border-gray-300"></td>
-                    <td class="px-6 py-4">
-                      <div class="flex items-center space-x-3">
-                        <img [src]="m.avatar" class="w-10 h-10 rounded-full border-2" [ngClass]="m.avatarBorder">
-                        <div><p class="text-sm font-semibold text-gray-900">{{ m.name }}</p><p class="text-xs text-gray-500">{{ m.id }}</p></div>
-                      </div>
-                    </td>
-                    <td class="px-6 py-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="m.roleCls">{{ m.roleLabel }}</span></td>
-                    <td class="px-6 py-4 text-sm text-gray-900">{{ m.email }}</td>
-                    <td class="px-6 py-4 text-sm font-semibold text-gray-900">{{ m.cases }}</td>
-                    <td class="px-6 py-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="m.statusCls">{{ m.statusLabel }}</span></td>
-                    <td class="px-6 py-4 text-sm text-gray-900">{{ m.lastActive }}</td>
-                    <td class="px-6 py-4 text-right">
-                      <button class="text-gray-500 hover:text-gray-900 mr-3"><i class="fa-solid fa-edit"></i></button>
-                      <button class="text-gray-500 hover:text-gray-900"><i class="fa-solid fa-ellipsis-vertical"></i></button>
-                    </td>
+
+          @if (loading()) {
+            <div class="flex items-center justify-center py-16 text-gray-400">
+              <i class="fa-solid fa-spinner fa-spin text-3xl mr-3"></i>
+              <span class="text-sm">Loading team members…</span>
+            </div>
+          } @else if (filteredTeam().length === 0) {
+            <div class="text-center py-16 text-gray-400">
+              <i class="fa-solid fa-users text-4xl mb-3"></i>
+              <p class="text-sm">No team members found</p>
+            </div>
+          } @else {
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Team Member</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Role</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Cases</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                    <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase">Member Since</th>
+                    <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
                   </tr>
-                }
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  @for (m of filteredTeam(); track m.id) {
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-6 py-4">
+                        <div class="flex items-center space-x-3">
+                          <img [src]="m.avatar" class="w-10 h-10 rounded-full border-2 object-cover" [ngClass]="m.borderCls" [alt]="m.name">
+                          <div><p class="text-sm font-semibold text-gray-900">{{ m.name }}</p><p class="text-xs text-gray-500">{{ m.email }}</p></div>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="m.roleCls">{{ m.roleLabel }}</span></td>
+                      <td class="px-6 py-4 text-sm text-gray-900">{{ m.phone || '—' }}</td>
+                      <td class="px-6 py-4 text-sm font-semibold text-gray-900">{{ m.cases }}</td>
+                      <td class="px-6 py-4"><span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="m.statusCls">{{ m.status }}</span></td>
+                      <td class="px-6 py-4 text-sm text-gray-500">{{ m.since }}</td>
+                      <td class="px-6 py-4 text-right">
+                        @if (m.is_active) {
+                          <button (click)="deactivateTeamMember(m.id)" [disabled]="teamMemberSaving() === m.id"
+                            class="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50">
+                            @if (teamMemberSaving() === m.id) {
+                              <i class="fa-solid fa-spinner fa-spin"></i>
+                            } @else {
+                              Deactivate
+                            }
+                          </button>
+                        } @else {
+                          <span class="text-xs text-gray-400">Inactive</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
         </div>
       </div>
     }
@@ -601,10 +646,7 @@
               <div class="space-y-4">
                 @for (n of emailNotifs; track n.label; let i = $index; let last = $last) {
                   <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
-                    <div>
-                      <p class="text-sm font-medium text-gray-900">{{ n.label }}</p>
-                      <p class="text-xs text-gray-500">{{ n.desc }}</p>
-                    </div>
+                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
                     <label class="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(emailNotifs, i)" class="sr-only peer">
                       <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
@@ -623,10 +665,7 @@
               <div class="space-y-4">
                 @for (n of smsNotifs; track n.label; let i = $index; let last = $last) {
                   <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
-                    <div>
-                      <p class="text-sm font-medium text-gray-900">{{ n.label }}</p>
-                      <p class="text-xs text-gray-500">{{ n.desc }}</p>
-                    </div>
+                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
                     <label class="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(smsNotifs, i)" class="sr-only peer">
                       <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
@@ -645,10 +684,7 @@
               <div class="space-y-4">
                 @for (n of pushNotifs; track n.label; let i = $index; let last = $last) {
                   <div class="flex items-center justify-between" [ngClass]="last ? '' : 'pb-4 border-b border-gray-100'">
-                    <div>
-                      <p class="text-sm font-medium text-gray-900">{{ n.label }}</p>
-                      <p class="text-xs text-gray-500">{{ n.desc }}</p>
-                    </div>
+                    <div><p class="text-sm font-medium text-gray-900">{{ n.label }}</p><p class="text-xs text-gray-500">{{ n.desc }}</p></div>
                     <label class="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" [checked]="n.checked" (change)="toggleNotif(pushNotifs, i)" class="sr-only peer">
                       <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
@@ -753,7 +789,6 @@
                 </div>
               }
             </div>
-
           </div>
         </div>
 
@@ -952,7 +987,6 @@
                 </div>
               }
             </div>
-
           </div>
         </div>
 

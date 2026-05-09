@@ -7,4 +7,7 @@ export const environment = {
   // ─── Supabase (conservé pour référence) ───────────────────
   supabaseUrl: 'https://ydzbgkblqnznbujzaple.supabase.co',
   supabaseAnonKey: 'sb_publishable_PB-xL2_FnqOmQWNIp7nzNQ_-sVO_Dgv',
+
+  // ─── Mistral AI ────────────────────────────────────────────
+  mistralApiKey: 'XGpjcJfxtKganVw5gtROF6UGtXo1qMpC',
 };

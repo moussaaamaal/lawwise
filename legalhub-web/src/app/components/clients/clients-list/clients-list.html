@@ -8,33 +8,73 @@
           [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
           class="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50">
       </div>
-      <button class="ml-4 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
-        <i class="fa-solid fa-filter mr-2"></i>Filters
+      <button (click)="showFilterPanel.update(v => !v)"
+              class="ml-4 px-4 py-2 text-sm rounded-lg transition-colors flex items-center"
+              [ngClass]="showFilterPanel() || hasActiveFilters
+                ? 'bg-amber-50 border border-amber-300 text-amber-700'
+                : 'text-gray-600 hover:bg-gray-100'">
+        <i class="fa-solid fa-filter mr-2"></i>Advanced Filters
+        @if (hasActiveFilters) {
+          <span class="ml-2 w-2 h-2 bg-amber-500 rounded-full inline-block"></span>
+        }
       </button>
     </div>
     <div class="flex items-center space-x-3">
-      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
-        <i class="fa-solid fa-bell text-xl"></i>
-        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-      </button>
-      <button class="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
-        <i class="fa-solid fa-envelope text-xl"></i>
-        <span class="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
-      </button>
       <div class="h-8 w-px bg-gray-300"></div>
-      <button (click)="openModal()" class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
+      <button (click)="openModal()"
+              class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all">
         <i class="fa-solid fa-plus"></i>
         <span class="font-medium">New Client</span>
       </button>
-      <button class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-        <i class="fa-solid fa-download text-gray-600"></i>
-        <span class="text-sm text-gray-700">Export</span>
+      <button (click)="exportCsv()"
+              class="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+        <i class="fa-solid fa-file-export text-gray-600"></i>
+        <span class="text-sm text-gray-700">Export CSV</span>
       </button>
     </div>
   </div>
+
+  <!-- Advanced Filter Panel -->
+  @if (showFilterPanel()) {
+    <div class="px-8 pb-4 border-t border-gray-100 pt-3">
+      <div class="flex items-end gap-4">
+        <div class="flex-1">
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Status</label>
+          <select [ngModel]="filterStatus()" (ngModelChange)="filterStatus.set($event)"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+            <option value="">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+            <option value="Pending">Pending</option>
+          </select>
+        </div>
+        <div class="flex-1">
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Client Type</label>
+          <select [ngModel]="filterType()" (ngModelChange)="filterType.set($event)"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
+            <option value="">All Types</option>
+            <option value="Standard Client">Standard Client</option>
+            <option value="Corporate Client">Corporate Client</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          @if (hasActiveFilters) {
+            <button (click)="clearFilters()"
+                    class="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+              <i class="fa-solid fa-xmark mr-1"></i>Clear
+            </button>
+          }
+          <button (click)="showFilterPanel.set(false)"
+                  class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 </header>
 
-<main class="flex-1 overflow-y-auto bg-gray-50">
+<main class="flex-1 overflow-y-auto bg-gray-50" (click)="showFilterPanel.set(false)">
 
   <!-- PAGE HEADER -->
   <section class="px-8 pt-6 pb-4">
@@ -42,18 +82,6 @@
       <div>
         <h1 class="text-3xl font-bold text-gray-900">Client Management</h1>
         <p class="text-gray-600 mt-1">Manage your client relationships and legal matters</p>
-      </div>
-      <div class="flex items-center space-x-2 bg-white border border-gray-200 rounded-lg p-1">
-        <button (click)="setView('list')"
-          class="p-2 rounded-md transition-colors"
-          [ngClass]="viewMode() === 'list' ? 'bg-amber-500 text-white' : 'text-gray-500 hover:bg-gray-100'">
-          <i class="fa-solid fa-list"></i>
-        </button>
-        <button (click)="setView('grid')"
-          class="p-2 rounded-md transition-colors"
-          [ngClass]="viewMode() === 'grid' ? 'bg-amber-500 text-white' : 'text-gray-500 hover:bg-gray-100'">
-          <i class="fa-solid fa-grip"></i>
-        </button>
       </div>
     </div>
   </section>
@@ -100,7 +128,7 @@
   </section>
 
   <!-- FILTERS + TABLE/GRID -->
-  <section class="px-8 pb-8">
+  <section class="px-8 pb-8" (click)="$event.stopPropagation()">
     <div class="bg-white rounded-xl shadow-sm border border-gray-200">
 
       <!-- Toolbar -->
@@ -114,16 +142,45 @@
             </button>
           }
         </div>
-        <p class="text-sm text-gray-500">{{ filteredClients.length }} clients found</p>
+        <div class="flex items-center gap-4">
+          @if (selectedCount > 0) {
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-amber-700 bg-amber-50 px-3 py-1 rounded-lg">
+                {{ selectedCount }} selected
+              </span>
+              <button (click)="clearSelection()"
+                      class="text-xs text-gray-500 hover:text-gray-700 underline">Clear</button>
+            </div>
+          }
+          <p class="text-sm text-gray-500">{{ filteredClients.length }} clients found</p>
+        </div>
       </div>
 
+      <!-- Loading -->
+      @if (isLoading()) {
+        <div class="flex items-center justify-center py-20 text-gray-400">
+          <i class="fa-solid fa-spinner fa-spin text-3xl mr-3"></i>
+          <span class="text-lg">Loading clients...</span>
+        </div>
+      }
+
+      <!-- Error -->
+      @if (error()) {
+        <div class="mx-6 my-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i>{{ error() }}
+        </div>
+      }
+
       <!-- ══ LIST VIEW ══ -->
-      @if (viewMode() === 'list') {
+      @if (!isLoading()) {
         <div class="overflow-x-auto">
           <table class="w-full">
             <thead class="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th class="px-6 py-4 text-left"><input type="checkbox" class="rounded border-gray-300"></th>
+                <th class="px-6 py-4 text-left">
+                  <input type="checkbox" class="rounded border-gray-300"
+                         [ngModel]="allSelected" (ngModelChange)="toggleSelectAll()">
+                </th>
                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Client</th>
                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Contact</th>
                 <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
@@ -136,17 +193,24 @@
             </thead>
             <tbody class="divide-y divide-gray-100">
               @for (c of filteredClients; track c.id) {
-                <tr class="hover:bg-gray-50 transition-colors">
-                  <td class="px-6 py-4"><input type="checkbox" class="rounded border-gray-300"></td>
+                <tr class="hover:bg-gray-50 transition-colors"
+                    [ngClass]="isSelected(c.id) ? 'bg-amber-50' : ''">
+                  <td class="px-6 py-4">
+                    <input type="checkbox" class="rounded border-gray-300"
+                           [ngModel]="isSelected(c.id)" (ngModelChange)="toggleSelect(c.id)"
+                           (click)="$event.stopPropagation()">
+                  </td>
 
                   <!-- Client -->
                   <td class="px-6 py-4">
                     <div class="flex items-center space-x-3">
                       <img [src]="c.avatar" [alt]="c.name" class="w-10 h-10 rounded-full border-2 border-gray-200 flex-shrink-0">
                       <div>
-                        <p class="text-sm font-semibold text-gray-900">{{ c.name }}</p>
+                        <p class="text-sm font-semibold text-gray-900 cursor-pointer hover:text-amber-600 transition-colors"
+                           (click)="goToDetail(c.id)">{{ c.name }}</p>
                         <p class="text-xs text-gray-500">{{ c.company }}</p>
-                        <span class="text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 inline-block" [ngClass]="[c.typeBg, c.typeColor]">{{ c.type }}</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 inline-block"
+                              [ngClass]="[c.typeBg, c.typeColor]">{{ c.type }}</span>
                       </div>
                     </div>
                   </td>
@@ -159,7 +223,8 @@
 
                   <!-- Status -->
                   <td class="px-6 py-4">
-                    <span class="text-xs px-3 py-1 rounded-full font-medium" [ngClass]="[c.statusBg, c.statusColor]">{{ c.status }}</span>
+                    <span class="text-xs px-3 py-1 rounded-full font-medium"
+                          [ngClass]="[c.statusBg, c.statusColor]">{{ c.status }}</span>
                   </td>
 
                   <!-- Cases -->
@@ -189,19 +254,32 @@
                   <!-- Actions -->
                   <td class="px-6 py-4 text-right">
                     <div class="flex items-center justify-end space-x-1">
-                      <!-- ★ Show Details button -->
                       <button (click)="goToDetail(c.id)"
                         class="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors">
                         <i class="fa-solid fa-eye"></i>
-                        <span>Show Details</span>
+                        <span>View</span>
                       </button>
-                      <button class="p-2 text-gray-500 hover:text-amber-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                      <button (click)="openEditModal(c)"
+                        class="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors">
                         <i class="fa-solid fa-pen-to-square"></i>
+                        <span>Edit</span>
                       </button>
-                      <button class="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors" title="More">
-                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                      <button (click)="deleteClient(c.id)"
+                        class="flex items-center space-x-1.5 px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition-colors">
+                        <i class="fa-solid fa-trash"></i>
+                        <span>Delete</span>
                       </button>
                     </div>
+                  </td>
+                </tr>
+              }
+
+              @if (!isLoading() && filteredClients.length === 0) {
+                <tr>
+                  <td colspan="9" class="px-6 py-16 text-center text-gray-400">
+                    <i class="fa-solid fa-users text-4xl mb-3 block"></i>
+                    <p class="text-base font-medium">No clients found</p>
+                    <p class="text-sm mt-1">Try adjusting your filters or add a new client.</p>
                   </td>
                 </tr>
               }
@@ -209,74 +287,9 @@
           </table>
         </div>
 
-        <!-- Pagination -->
-        <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-          <p class="text-sm text-gray-600">Showing {{ filteredClients.length }} of {{ clients.length }} clients</p>
-          <div class="flex items-center space-x-2">
-            <button class="px-3 py-2 border border-gray-300 rounded-lg text-sm opacity-50 cursor-not-allowed" disabled>
-              <i class="fa-solid fa-chevron-left"></i>
-            </button>
-            <button class="px-3 py-2 rounded-lg text-sm font-medium bg-amber-500 text-white">1</button>
-            <button class="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">2</button>
-            <button class="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
-          </div>
-        </div>
-      }
-
-      <!-- ══ GRID VIEW ══ -->
-      @if (viewMode() === 'grid') {
-        <div class="p-6 grid grid-cols-3 gap-6">
-          @for (c of filteredClients; track c.id) {
-            <div class="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow">
-              <div class="flex items-start justify-between mb-4">
-                <div class="flex items-center space-x-3">
-                  <img [src]="c.avatar" [alt]="c.name" class="w-12 h-12 rounded-full border-2 border-gray-200">
-                  <div>
-                    <p class="text-sm font-bold text-gray-900">{{ c.name }}</p>
-                    <p class="text-xs text-gray-500 mt-0.5">{{ c.company }}</p>
-                  </div>
-                </div>
-                <span class="text-xs px-2 py-1 rounded-full font-medium" [ngClass]="[c.statusBg, c.statusColor]">{{ c.status }}</span>
-              </div>
-
-              <div class="space-y-2 mb-4 text-sm text-gray-600">
-                <div class="flex items-center space-x-2">
-                  <i class="fa-solid fa-envelope text-gray-400 w-4"></i>
-                  <span class="truncate">{{ c.email }}</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <i class="fa-solid fa-phone text-gray-400 w-4"></i>
-                  <span>{{ c.phone }}</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <i class="fa-solid fa-briefcase text-gray-400 w-4"></i>
-                  <span>{{ c.activeCases }} active cases</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <i class="fa-solid fa-dollar-sign text-gray-400 w-4"></i>
-                  <span class="font-semibold text-gray-900">{{ c.totalBilled }} billed</span>
-                </div>
-              </div>
-
-              <div class="flex flex-wrap gap-1 mb-4">
-                @for (tag of c.tags.slice(0,2); track tag) {
-                  <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{{ tag }}</span>
-                }
-              </div>
-
-              <div class="pt-4 border-t border-gray-100 flex items-center justify-between">
-                <span class="text-xs text-gray-500">{{ c.attorney }}</span>
-                <!-- ★ Show Details button -->
-                <button (click)="goToDetail(c.id)"
-                  class="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors">
-                  <i class="fa-solid fa-eye"></i>
-                  <span>Show Details</span>
-                </button>
-              </div>
-            </div>
-          }
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-200">
+          <p class="text-sm text-gray-500">{{ filteredClients.length }} client(s) found</p>
         </div>
       }
 
@@ -325,7 +338,8 @@
           <span class="text-gray-700">Step {{ modalStep() }} of 3</span>
         </div>
         <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
-          <div class="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300" [style.width]="progressPct + '%'"></div>
+          <div class="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300"
+               [style.width]="progressPct + '%'"></div>
         </div>
         <div class="flex items-center justify-between mt-1">
           @for (sl of stepLabels; track sl.label) {
@@ -454,10 +468,12 @@
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">Primary Phone <span class="text-red-500">*</span></label>
             <div class="flex space-x-2">
-              <div class="relative w-24 flex-shrink-0">
+              <div class="relative w-32 flex-shrink-0">
                 <select [ngModel]="f2().phoneCode" (ngModelChange)="f2.update(v=>({...v,phoneCode:$event}))"
                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
-                  <option>+1</option><option>+44</option><option>+33</option><option>+49</option><option>+91</option>
+                  @for (c of countryCodes; track c.code) {
+                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                  }
                 </select>
                 <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
               </div>
@@ -474,10 +490,12 @@
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">Secondary Phone</label>
             <div class="flex space-x-2">
-              <div class="relative w-24 flex-shrink-0">
+              <div class="relative w-32 flex-shrink-0">
                 <select [ngModel]="f2().phoneCode2" (ngModelChange)="f2.update(v=>({...v,phoneCode2:$event}))"
                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
-                  <option>+1</option><option>+44</option><option>+33</option><option>+49</option><option>+91</option>
+                  @for (c of countryCodes; track c.code) {
+                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                  }
                 </select>
                 <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
               </div>
@@ -522,10 +540,12 @@
           <div>
             <label class="block text-sm font-semibold text-gray-800 mb-2">WhatsApp Number</label>
             <div class="flex space-x-2">
-              <div class="relative w-24 flex-shrink-0">
+              <div class="relative w-32 flex-shrink-0">
                 <select [ngModel]="f2().waCode" (ngModelChange)="f2.update(v=>({...v,waCode:$event}))"
                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-3 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
-                  <option>+1</option><option>+44</option><option>+33</option><option>+49</option><option>+91</option>
+                  @for (c of countryCodes; track c.code) {
+                    <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                  }
                 </select>
                 <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
               </div>
@@ -739,9 +759,15 @@
     <!-- ── Sticky Footer ── -->
     @if (modalStep() < 4) {
       <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+        @if (modalStep() > 1) {
+          <button (click)="prevStep()"
+                  class="px-4 py-3.5 border border-gray-300 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-100 transition-colors">
+            <i class="fa-solid fa-arrow-left mr-2"></i>Back
+          </button>
+        }
         <button (click)="closeModal()"
                 class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
-          <i class="fa-solid fa-save mr-2"></i>Save Draft
+          Cancel
         </button>
         <button (click)="nextStep()"
                 [disabled]="(modalStep()===1 && !step1Valid) || (modalStep()===2 && !step2Valid) || isSubmitting()"
@@ -769,6 +795,372 @@
         </p>
       }
     }
+
+  </div><!-- /panel -->
+</div><!-- /backdrop -->
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — EDIT CLIENT  (3 steps — identique à client-detail)
+══════════════════════════════════════════════════════════ -->
+@if (showEditModal()) {
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background-color: rgba(0,0,0,0.5)"
+     (click)="closeEditModal()">
+
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
+       style="max-height:92vh"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid fa-user-pen text-amber-600"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Edit Client</h2>
+            <p class="text-xs text-gray-500">Update client profile — {{ editingClient()?.name }}</p>
+          </div>
+        </div>
+        <button (click)="closeEditModal()" class="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
+          <i class="fa-solid fa-times text-lg"></i>
+        </button>
+      </div>
+      <!-- Progress -->
+      <div class="flex items-center justify-between mb-2 text-xs font-semibold">
+        <span class="text-gray-500">Progress</span>
+        <span class="text-gray-700">Step {{ editStep() }} of 3</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+        <div class="bg-gradient-to-r from-amber-500 to-amber-600 h-2 rounded-full transition-all duration-300"
+             [style.width]="editProgressPct + '%'"></div>
+      </div>
+      <div class="flex items-center justify-between mt-1">
+        @for (sl of editStepLabels; track sl.label) {
+          <span class="text-xs font-medium transition-colors"
+                [ngClass]="sl.active ? 'text-amber-600 font-bold' : sl.done ? 'text-green-500' : 'text-gray-400'">
+            @if (sl.done) { <i class="fa-solid fa-check mr-1"></i> }
+            {{ sl.label }}
+          </span>
+        }
+      </div>
+    </div>
+
+    <!-- Scrollable Body -->
+    <div class="overflow-y-auto flex-1">
+
+      <!-- ════ STEP 1 — Identity ════ -->
+      @if (editStep() === 1) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Personal &amp; Contact Info</h3>
+            <span class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-semibold">Required</span>
+          </div>
+
+          <!-- Avatar -->
+          <div class="flex items-center space-x-4">
+            <img [src]="editingClient()?.avatar" [alt]="editingClient()?.name"
+                 class="w-16 h-16 rounded-full border-2 border-amber-200 flex-shrink-0">
+            <button class="flex-1 bg-amber-50 text-amber-700 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center space-x-2 hover:bg-amber-100 transition-colors border border-amber-200">
+              <i class="fa-solid fa-camera"></i><span>Change Photo</span>
+            </button>
+          </div>
+
+          <!-- Full Name -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Full Name <span class="text-red-500">*</span></label>
+            <div class="relative">
+              <input type="text"
+                     [ngModel]="eF1().name" (ngModelChange)="eF1.update(v=>({...v,name:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Email + Phone -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Email <span class="text-red-500">*</span></label>
+              <div class="relative">
+                <input type="email"
+                       [ngModel]="eF1().email" (ngModelChange)="eF1.update(v=>({...v,email:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Phone</label>
+              <div class="flex space-x-2">
+                <div class="relative w-28 flex-shrink-0">
+                  <select [ngModel]="eF1().phoneCode" (ngModelChange)="eF1.update(v=>({...v,phoneCode:$event}))"
+                          class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-2 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
+                    @for (c of countryCodes; track c.code) {
+                      <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                    }
+                  </select>
+                  <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                </div>
+                <div class="relative flex-1">
+                  <input type="tel"
+                         [ngModel]="eF1().phone" (ngModelChange)="eF1.update(v=>({...v,phone:$event}))"
+                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                  <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mobile + Company -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Mobile</label>
+              <div class="flex space-x-2">
+                <div class="relative w-28 flex-shrink-0">
+                  <select [ngModel]="eF1().mobileCode" (ngModelChange)="eF1.update(v=>({...v,mobileCode:$event}))"
+                          class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-2 py-3 focus:outline-none focus:border-amber-500 appearance-none text-sm">
+                    @for (c of countryCodes; track c.code) {
+                      <option [value]="c.code">{{ c.flag }} {{ c.code }}</option>
+                    }
+                  </select>
+                  <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                </div>
+                <div class="relative flex-1">
+                  <input type="tel"
+                         [ngModel]="eF1().mobile" (ngModelChange)="eF1.update(v=>({...v,mobile:$event}))"
+                         class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                  <i class="fa-solid fa-mobile absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Company</label>
+              <div class="relative">
+                <input type="text"
+                       [ngModel]="eF1().company" (ngModelChange)="eF1.update(v=>({...v,company:$event}))"
+                       class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+                <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Address -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Address</label>
+            <div class="relative">
+              <input type="text"
+                     [ngModel]="eF1().address" (ngModelChange)="eF1.update(v=>({...v,address:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-map-marker-alt absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">City / State / ZIP</label>
+              <input type="text"
+                     [ngModel]="eF1().city" (ngModelChange)="eF1.update(v=>({...v,city:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-800 mb-2">Tax ID</label>
+              <input type="text"
+                     [ngModel]="eF1().taxId" (ngModelChange)="eF1.update(v=>({...v,taxId:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 2 — Classification ════ -->
+      @if (editStep() === 2) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Classification &amp; Assignment</h3>
+            <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+          </div>
+
+          <!-- Status -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Status</label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (st of statusList; track st) {
+                <button (click)="eF2.update(v=>({...v,status:st}))"
+                        class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
+                        [ngClass]="eF2().status === st
+                          ? (st==='Active' ? 'border-green-500 bg-green-50 text-green-700' : st==='Pending' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-red-500 bg-red-50 text-red-700')
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                  <i class="fa-solid fa-circle text-xs mr-1.5"
+                     [ngClass]="st==='Active' ? 'text-green-500' : st==='Pending' ? 'text-amber-500' : 'text-red-400'"></i>
+                  {{ st }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Client Type -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Type</label>
+            <div class="relative">
+              <select [ngModel]="eF2().type" (ngModelChange)="eF2.update(v=>({...v,type:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                @for (t of clientTypes; track t) { <option>{{ t }}</option> }
+              </select>
+              <i class="fa-solid fa-star absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+            </div>
+          </div>
+
+          <!-- Assigned Attorney -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Assigned Attorney</label>
+            <div class="relative">
+              <select [ngModel]="eF2().attorney" (ngModelChange)="eF2.update(v=>({...v,attorney:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 appearance-none">
+                @for (a of attorneys; track a) { <option>{{ a }}</option> }
+              </select>
+              <i class="fa-solid fa-user-tie absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+            </div>
+          </div>
+
+          <!-- Client Since -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Since</label>
+            <div class="relative">
+              <input type="text" placeholder="e.g., Jan 15, 2023"
+                     [ngModel]="eF2().since" (ngModelChange)="eF2.update(v=>({...v,since:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+
+          <!-- Tags -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Tags <span class="text-xs text-gray-400 font-normal">(comma separated)</span></label>
+            <div class="relative">
+              <input type="text" placeholder="e.g., Corporate Client, Real Estate"
+                     [ngModel]="eF2().tags" (ngModelChange)="eF2.update(v=>({...v,tags:$event}))"
+                     class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 pl-11 focus:outline-none focus:border-amber-500 focus:bg-white transition-all">
+              <i class="fa-solid fa-tags absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+            @if (eF2().tags) {
+              <div class="flex flex-wrap gap-2 mt-2">
+                @for (tag of eF2().tags.split(','); track tag) {
+                  @if (tag.trim()) {
+                    <span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">{{ tag.trim() }}</span>
+                  }
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ════ STEP 3 — Notes & Preferences ════ -->
+      @if (editStep() === 3) {
+        <div class="px-6 py-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-gray-900">Notes &amp; Preferences</h3>
+            <span class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full font-semibold">Optional</span>
+          </div>
+
+          <!-- Priority -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Client Priority</label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (p of ['Normal','High','VIP']; track p) {
+                <button (click)="eF3.update(v=>({...v,priority:p}))"
+                        class="border-2 rounded-xl py-3 text-sm font-semibold transition-all"
+                        [ngClass]="eF3().priority === p
+                          ? (p==='Normal' ? 'border-green-500 bg-green-50 text-green-700' : p==='High' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-purple-500 bg-purple-50 text-purple-700')
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                  <i class="fa-solid fa-circle text-xs mr-1.5"
+                     [ngClass]="p==='Normal' ? 'text-green-500' : p==='High' ? 'text-amber-500' : 'text-purple-500'"></i>
+                  {{ p }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Preferred Contact -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Preferred Contact Method</label>
+            <div class="grid grid-cols-3 gap-3">
+              @for (m of [['Email','fa-envelope'],['Phone','fa-phone'],['In-Person','fa-users']]; track m[0]) {
+                <button (click)="eF3.update(v=>({...v,preferredContact:m[0]}))"
+                        class="border-2 rounded-xl py-3 text-xs font-semibold transition-all flex flex-col items-center space-y-1"
+                        [ngClass]="eF3().preferredContact === m[0]
+                          ? 'border-amber-500 bg-amber-50 text-amber-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-amber-300'">
+                  <i [ngClass]="'fa-solid ' + m[1]"></i>
+                  <span>{{ m[0] }}</span>
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">Internal Notes</label>
+            <textarea rows="5" placeholder="Notes about preferences, important details, special instructions..."
+                      [ngModel]="eF3().notes" (ngModelChange)="eF3.update(v=>({...v,notes:$event}))"
+                      class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"></textarea>
+          </div>
+
+          <!-- Summary card -->
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p class="text-xs font-semibold text-amber-700 uppercase mb-3">Summary of Changes</p>
+            <div class="space-y-1.5 text-xs text-gray-700">
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-user text-amber-500 w-4"></i>
+                <span>{{ eF1().name }}</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-envelope text-amber-500 w-4"></i>
+                <span>{{ eF1().email }}</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-star text-amber-500 w-4"></i>
+                <span>{{ eF2().type }} · {{ eF2().status }}</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-user-tie text-amber-500 w-4"></i>
+                <span>{{ eF2().attorney }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
+    </div><!-- /scrollable body -->
+
+    <!-- Sticky Footer -->
+    <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center space-x-3 flex-shrink-0">
+      <button (click)="editStep() > 1 ? editPrev() : closeEditModal()"
+              class="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+        @if (editStep() > 1) {
+          <i class="fa-solid fa-arrow-left mr-2"></i>Back
+        } @else {
+          <i class="fa-solid fa-times mr-2"></i>Cancel
+        }
+      </button>
+      <button (click)="editNext()"
+              [disabled]="editStep()===1 && !editStep1Valid || isSaving()"
+              class="flex-1 py-3.5 rounded-xl font-bold text-sm transition-all"
+              [ngClass]="(editStep()===1 && !editStep1Valid)
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:shadow-lg'">
+        @if (isSaving()) {
+          <i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...
+        } @else if (editStep() === 3) {
+          <i class="fa-solid fa-check mr-2"></i>Save Changes
+        } @else {
+          Next <i class="fa-solid fa-arrow-right ml-2"></i>
+        }
+      </button>
+    </div>
 
   </div><!-- /panel -->
 </div><!-- /backdrop -->

@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, inject, effect } from '@angular/core';
+import { Component, OnInit, signal, inject, effect, ViewChild } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -7,6 +7,8 @@ import { Case } from '../../../models';
 import { UploadModalService } from '../../../shared/upload-modal/upload-modal.sevice';
 import { UploadModal } from '../../../shared/upload-modal/upload-modal';
 import { DocumentService, DocEntry } from '../../../services/document.service';
+import { TaskService, RawTask, RawNote } from '../../../services/task.service';
+import { VoiceNoteModal } from '../../../shared/voice-note-modal/voice-note-modal';
 
 interface TimelineEntry {
   action: string;
@@ -15,10 +17,22 @@ interface TimelineEntry {
 }
 
 interface Task {
-  label: string;
-  due: string;
-  dueColor: string;
-  done: boolean;
+  id:        string;
+  label:     string;
+  due:       string;
+  dueColor:  string;
+  done:      boolean;
+  priority:  string;
+  category?: string;
+}
+
+interface Note {
+  id:        string;
+  title?:    string;
+  content:   string;
+  author:    string;
+  createdAt: string;
+  isVoice:   boolean;
 }
 
 interface BillingEntry {
@@ -34,19 +48,22 @@ interface BillingEntry {
 @Component({
   selector: 'app-case-detail',
   standalone: true,
-  imports: [NgClass, FormsModule, UploadModal],
+  imports: [NgClass, FormsModule, UploadModal, VoiceNoteModal],
   templateUrl: './case-detail.html',
 })
 export class CaseDetail implements OnInit {
+  @ViewChild(VoiceNoteModal) voiceModal!: VoiceNoteModal;
+
   private route       = inject(ActivatedRoute);
   private router      = inject(Router);
   private caseService = inject(CaseService);
   upload              = inject(UploadModalService);
   private docService  = inject(DocumentService);
-  private _caseId     = '';
+  private taskService = inject(TaskService);
+  _caseId     = '';
 
   activeTab = signal('Overview');
-  tabs = ['Overview', 'Timeline', 'Documents', 'Tasks', 'Billing'];
+  tabs = ['Overview', 'Timeline', 'Documents', 'Tasks', 'Notes', 'Billing'];
 
   case      = signal<Case | null>(null);
   timeline  = signal<TimelineEntry[]>([]);
@@ -104,12 +121,18 @@ export class CaseDetail implements OnInit {
     );
   }
 
-  tasks: Task[] = [
-    { label:'Prepare opening statement',  due:'Due today',     dueColor:'text-red-600',   done:false },
-    { label:'Review expert testimony',    due:'Due tomorrow',  dueColor:'text-amber-600', done:false },
-    { label:'File response to motion',    due:'Due in 3 days', dueColor:'text-gray-600',  done:false },
-    { label:'Submit discovery documents', due:'Completed',     dueColor:'text-green-600', done:true },
-  ];
+  tasks         = signal<Task[]>([]);
+  tasksLoading  = signal(false);
+
+  notes            = signal<Note[]>([]);
+  showAddNoteModal = signal(false);
+  newNoteTitle     = signal('');
+  newNoteContent   = signal('');
+  isSavingNote     = signal(false);
+  editingNoteId    = signal<string | null>(null);
+  editNoteTitle    = signal('');
+  editNoteContent  = signal('');
+  deletingNoteId   = signal<string | null>(null);
 
   billingEntries: BillingEntry[] = [
     { date:'Nov 15, 2024', attorney:'—', desc:'Discovery document review', hours:'4.5', rate:'$350/hr', amount:'$1,575.00' },
@@ -218,14 +241,18 @@ export class CaseDetail implements OnInit {
     this._caseId = id;
     this.isLoading.set(true);
     try {
-      const [c, tl, docs] = await Promise.all([
+      const [c, tl, docs, rawTasks, rawNotes] = await Promise.all([
         this.caseService.fetchCaseById(id),
         this.caseService.fetchTimeline(id),
         this.docService.listForCase(id),
+        this.taskService.listTasks({ case_id: id }),
+        this.taskService.listNotes({ case_id: id }),
       ]);
       this.case.set(c);
       this.timeline.set(tl as unknown as TimelineEntry[]);
       this.documents.set(docs);
+      this.tasks.set(rawTasks.map(r => this._mapTask(r)));
+      this.notes.set(rawNotes.map(r => this._mapNote(r)));
       this.initEditForm();
     } catch {
       this.errorMsg.set('Could not load case. It may not exist or the backend is unavailable.');
@@ -236,7 +263,139 @@ export class CaseDetail implements OnInit {
 
   setTab(t: string) { this.activeTab.set(t); }
   goBack()          { this.router.navigate(['/cases']); }
-  toggleTask(t: Task) { t.done = !t.done; }
+
+  async toggleTask(task: Task): Promise<void> {
+    const newStatus = task.done ? 'PENDING' : 'COMPLETED';
+    try {
+      await this.taskService.updateStatus(task.id, newStatus);
+      this.tasks.update(arr => arr.map(t =>
+        t.id === task.id ? { ...t, done: !t.done } : t
+      ));
+    } catch (err) {
+      console.error('Failed to update task status:', err);
+    }
+  }
+
+  private _mapTask(raw: RawTask): Task {
+    let due = 'No due date';
+    let dueColor = 'text-gray-600';
+    if (raw.due_date) {
+      const today    = new Date(); today.setHours(0, 0, 0, 0);
+      const datePart = raw.due_date.split('T')[0]; // keep only "YYYY-MM-DD"
+      const dueD     = new Date(datePart + 'T00:00:00');
+      const diff     = Math.round((dueD.getTime() - today.getTime()) / 86_400_000);
+      if (diff < 0)        { due = 'Overdue';      dueColor = 'text-red-600'; }
+      else if (diff === 0) { due = 'Due today';    dueColor = 'text-red-600'; }
+      else if (diff === 1) { due = 'Due tomorrow'; dueColor = 'text-amber-600'; }
+      else { due = `Due ${dueD.toLocaleDateString('en-US', { month: 'short', day: '2-digit' })}`; dueColor = 'text-gray-600'; }
+    }
+    return {
+      id:       raw.id,
+      label:    raw.title,
+      due,
+      dueColor,
+      done:     raw.status === 'COMPLETED',
+      priority: raw.priority,
+      category: raw.category ?? undefined,
+    };
+  }
+
+  // ── Notes ────────────────────────────────────────────────
+
+  private _mapNote(raw: RawNote): Note {
+    return {
+      id:        raw.id,
+      title:     raw.title ?? undefined,
+      content:   raw.content,
+      author:    raw.app_user?.full_name ?? 'Unknown',
+      createdAt: raw.created_at,
+      isVoice:   raw.is_voice_note ?? false,
+    };
+  }
+
+  openVoiceNoteModal() {
+    this.voiceModal.openModal();
+  }
+
+  async onVoiceNoteSaved(): Promise<void> {
+    const rawNotes = await this.taskService.listNotes({ case_id: this._caseId }).catch(() => []);
+    this.notes.set(rawNotes.map(r => this._mapNote(r)));
+  }
+
+  openAddNoteModal() {
+    this.newNoteTitle.set('');
+    this.newNoteContent.set('');
+    this.showAddNoteModal.set(true);
+  }
+
+  closeAddNoteModal() { this.showAddNoteModal.set(false); }
+
+  async saveNote(): Promise<void> {
+    const content = this.newNoteContent().trim();
+    if (!content) return;
+    this.isSavingNote.set(true);
+    try {
+      const raw = await this.taskService.createNote({
+        case_id: this._caseId,
+        title:   this.newNoteTitle().trim() || undefined,
+        content,
+      });
+      this.notes.update(arr => [this._mapNote(raw), ...arr]);
+      this.newNoteTitle.set('');
+      this.newNoteContent.set('');
+      this.closeAddNoteModal();
+    } catch (err) {
+      console.error('Failed to create note:', err);
+    } finally {
+      this.isSavingNote.set(false);
+    }
+  }
+
+  startEditNote(note: Note) {
+    this.editingNoteId.set(note.id);
+    this.editNoteTitle.set(note.title ?? '');
+    this.editNoteContent.set(note.content);
+  }
+
+  cancelEditNote() {
+    this.editingNoteId.set(null);
+    this.editNoteTitle.set('');
+    this.editNoteContent.set('');
+  }
+
+  async saveEditNote(id: string): Promise<void> {
+    const content = this.editNoteContent().trim();
+    if (!content) return;
+    try {
+      const raw = await this.taskService.updateNote(id, this.editNoteTitle().trim() || undefined, content);
+      this.notes.update(arr => arr.map(n => n.id === id ? this._mapNote(raw) : n));
+      this.cancelEditNote();
+    } catch (err) {
+      console.error('Failed to update note:', err);
+    }
+  }
+
+  async deleteNote(id: string): Promise<void> {
+    if (!confirm('Delete this note? This cannot be undone.')) return;
+    try {
+      await this.taskService.deleteNote(id);
+      this.notes.update(arr => arr.filter(n => n.id !== id));
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+    }
+  }
+
+  formatNoteDate(iso: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
+    if (diff < 60)   return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  }
 
   // ── Favorite ──────────────────────────────────────────────
 
@@ -288,28 +447,38 @@ export class CaseDetail implements OnInit {
 
   closeAddTaskModal() { this.showAddTaskModal.set(false); }
 
-  addTask() {
+  async addTask(): Promise<void> {
     const f = this.taskForm();
     if (!f.title.trim()) return;
+    this.isAddingTask.set(true);
 
-    let dueLabel = 'No due date';
-    let dueColor = 'text-gray-600';
+    const priorityMap: Record<string, string> = { Low: 'LOW', Medium: 'MEDIUM', High: 'HIGH' };
+    const categoryMap: Record<string, string> = {
+      'Court Filing':    'COURT_FILING',
+      'Document Review': 'DOC_REVIEW',
+      'Client Meeting':  'CLIENT_MEETING',
+      'Research':        'RESEARCH',
+      'Correspondence':  'CORRESPONDENCE',
+      'Discovery':       'DISCOVERY',
+      'Other':           'OTHER',
+    };
 
-    if (f.dueDate) {
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const due   = new Date(f.dueDate + 'T00:00:00');
-      const diff  = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-      if (diff < 0)       { dueLabel = 'Overdue';      dueColor = 'text-red-600'; }
-      else if (diff === 0){ dueLabel = 'Due today';    dueColor = 'text-red-600'; }
-      else if (diff === 1){ dueLabel = 'Due tomorrow'; dueColor = 'text-amber-600'; }
-      else                { dueLabel = `Due ${due.toLocaleDateString('en-US', { month: 'short', day: '2-digit' })}`; }
+    try {
+      const raw = await this.taskService.createTask({
+        title:       f.title.trim(),
+        case_id:     this._caseId || undefined,
+        description: f.description.trim() || undefined,
+        category:    f.category ? (categoryMap[f.category] ?? f.category) : undefined,
+        priority:    priorityMap[this.taskPriority()] ?? 'MEDIUM',
+        due_date:    f.dueDate || undefined,
+      });
+      this.tasks.update(arr => [this._mapTask(raw), ...arr]);
+      this.closeAddTaskModal();
+    } catch (err) {
+      console.error('Failed to create task:', err);
+    } finally {
+      this.isAddingTask.set(false);
     }
-
-    this.tasks = [
-      { label: f.title, due: dueLabel, dueColor, done: false },
-      ...this.tasks,
-    ];
-    this.closeAddTaskModal();
   }
 
   // ── Log Time ──────────────────────────────────────────────
@@ -369,7 +538,7 @@ export class CaseDetail implements OnInit {
         `with ${this.priorityLabel(c.priority)} priority.` +
         (c.court ? ` The case is being heard at ${c.court}.` : '') +
         (c.nextHearing ? ` Next hearing is scheduled for ${this.formatDate(c.nextHearing)}.` : '') +
-        ` There are ${this.tasks.filter(t => !t.done).length} pending tasks and ${this.documents().length} documents on file.` +
+        ` There are ${this.tasks().filter(t => !t.done).length} pending tasks and ${this.documents().length} documents on file.` +
         ` Recommendation: ensure all documentation is up to date and review relevant case precedents before the next hearing.`
       );
       this.aiSummaryLoading.set(false);
@@ -421,6 +590,65 @@ export class CaseDetail implements OnInit {
       billingType:  '',
       caseValue:    '',
     });
+  }
+
+  exportPdf() {
+    const c = this.case();
+    if (!c) return;
+    const taskRows = this.tasks().map(t =>
+      `<tr><td>${t.label}</td><td>${t.due}</td><td>${t.priority}</td><td>${t.done ? 'Done' : 'Pending'}</td></tr>`
+    ).join('') || '<tr><td colspan="4" style="color:#9ca3af;text-align:center">No tasks</td></tr>';
+    const billingRows = this.billingEntries.map(e =>
+      `<tr><td>${e.date}</td><td>${e.desc}</td><td>${e.hours}h</td><td>${e.rate}</td><td>${e.amount}</td></tr>`
+    ).join('') || '<tr><td colspan="5" style="color:#9ca3af;text-align:center">No billing entries</td></tr>';
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Case Report — ${c.title}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; padding: 24px; color: #111; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .sub { color: #6b7280; font-size: 11px; margin-bottom: 20px; }
+  .badges { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .badge { padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-bottom: 20px; }
+  .field label { font-size: 10px; font-weight: 700; color: #6b7280; text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .field span { font-size: 12px; }
+  .desc { background:#f9fafb; border-left: 3px solid #f59e0b; padding: 10px 14px; border-radius: 4px; margin-bottom: 20px; font-size: 12px; line-height: 1.6; }
+  h2 { font-size: 13px; font-weight: 700; margin: 20px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  th { background: #f59e0b; color: #fff; padding: 7px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  td { padding: 6px 10px; border-bottom: 1px solid #f3f4f6; font-size: 11px; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .footer { color:#9ca3af; font-size: 10px; margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 8px; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+<h1>${c.title}</h1>
+<div class="sub">Case #${c.caseNumber} &nbsp;·&nbsp; Generated ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
+<div class="badges">
+  <span class="badge" style="background:#dbeafe;color:#1d4ed8">${this.typeLabel(c.type)}</span>
+  <span class="badge" style="background:#fef3c7;color:#92400e">${this.statusLabel(c.status)}</span>
+  <span class="badge" style="background:#fee2e2;color:#991b1b">${this.priorityLabel(c.priority)}</span>
+</div>
+<div class="grid">
+  <div class="field"><label>Client</label><span>${c.client || '—'}</span></div>
+  <div class="field"><label>Court</label><span>${c.court || '—'}</span></div>
+  <div class="field"><label>Next Hearing</label><span>${this.formatDate(c.nextHearing)}</span></div>
+  <div class="field"><label>Documents</label><span>${this.documents().length}</span></div>
+</div>
+${c.description ? `<div class="desc">${c.description}</div>` : ''}
+<h2>Tasks (${this.tasks().length})</h2>
+<table><thead><tr><th>Title</th><th>Due</th><th>Priority</th><th>Status</th></tr></thead>
+<tbody>${taskRows}</tbody></table>
+<h2>Billing — Total: ${this.totalBilled}</h2>
+<table><thead><tr><th>Date</th><th>Description</th><th>Hours</th><th>Rate</th><th>Amount</th></tr></thead>
+<tbody>${billingRows}</tbody></table>
+<div class="footer">LegalHub — Confidential case report</div>
+</body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
   }
 
   openEditModal()  { this.initEditForm(); this.editStep.set(1); this.showEditModal.set(true); }

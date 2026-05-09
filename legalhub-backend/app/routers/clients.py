@@ -1,7 +1,8 @@
 import secrets
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from app.core.dependencies import get_lawyer, get_current_user
-from app.core.database import supabase
+from app.core.database import supabase, supabase_admin
 from app.core.email import send_client_invite_email
 from pydantic import BaseModel, EmailStr
 from typing import Optional
@@ -171,6 +172,49 @@ async def invite_client(client_id: str, current_user=Depends(get_lawyer)):
     )
 
     return {"message": f"Invitation sent to {client.data['email']}", "invite_token": invite_token}
+
+# ─── POST /api/clients/:id/avatar ───────────────────────
+
+@router.post("/{client_id}/avatar")
+async def upload_client_avatar(
+    client_id: str,
+    file: UploadFile = File(...),
+    current_user=Depends(get_lawyer),
+):
+    client = (
+        supabase.table("client")
+        .select("id")
+        .eq("id", client_id)
+        .eq("firm_id", current_user["firm_id"])
+        .single()
+        .execute()
+    )
+    if not client.data:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    content = await file.read()
+    ext = (file.filename or "avatar").rsplit(".", 1)[-1].lower()
+    storage_path = f"avatars/{current_user['firm_id']}/{client_id}/{uuid.uuid4()}.{ext}"
+
+    try:
+        supabase_admin.storage.from_("documents").upload(
+            storage_path,
+            content,
+            file_options={"content-type": file.content_type or "image/jpeg"},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Avatar upload failed: {e}")
+
+    avatar_url = supabase_admin.storage.from_("documents").get_public_url(storage_path)
+
+    result = (
+        supabase.table("client")
+        .update({"avatar_url": avatar_url})
+        .eq("id", client_id)
+        .eq("firm_id", current_user["firm_id"])
+        .execute()
+    )
+    return result.data[0]
 
 # ─── GET /api/clients/:id/cases ─────────────────────────
 

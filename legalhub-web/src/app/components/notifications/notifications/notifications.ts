@@ -1,22 +1,10 @@
-import { Component, signal, computed, inject, effect } from '@angular/core';
+import { Component, signal, computed, inject, OnInit } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { NotificationService } from '../../../services/notification.service';
+import type { Notif, NotifCategory, NotifPriority } from '../../../services/notification.service';
 
-export type NotifCategory = 'deadline' | 'document' | 'assignment' | 'payment' | 'system';
-export type NotifPriority = 'urgent' | 'high' | 'normal';
-
-export interface Notif {
-  id:           string;
-  category:     NotifCategory;
-  priority:     NotifPriority;
-  title:        string;
-  body:         string;
-  meta:         string;
-  time:         Date;
-  read:         boolean;
-  actionLabel?: string;
-}
+export type { NotifCategory, NotifPriority, Notif };
 
 @Component({
   selector: 'app-notifications',
@@ -24,9 +12,12 @@ export interface Notif {
   imports: [NgClass, FormsModule],
   templateUrl: './notifications.html',
 })
-export class Notifications {
+export class Notifications implements OnInit {
 
   private notifService = inject(NotificationService);
+
+  readonly allNotifications = this.notifService.notifications;
+  readonly loading          = this.notifService.loading;
 
   // ── WEB-NOTIF-01 — Category tabs with per-category colors ─
   activeFilter = signal<NotifCategory | 'all'>('all');
@@ -156,33 +147,6 @@ export class Notifications {
     },
   ];
 
-  // ── Notification data ─────────────────────────────────────
-  private _now = new Date();
-  private _h = (h: number) => new Date(this._now.getTime() - h * 3_600_000);
-  private _d = (d: number) => new Date(this._now.getTime() - d * 86_400_000);
-
-  allNotifications = signal<Notif[]>([
-    { id:'n1',  category:'deadline',   priority:'urgent', title:'Motion Filing Deadline Today',              body:'Summary judgment must be filed by 5:00 PM for Johnson vs. State Corp.',          meta:'CASE-2024-001 · Sarah Williams',   time:this._h(1),   read:false, actionLabel:'View Case' },
-    { id:'n2',  category:'deadline',   priority:'urgent', title:'Court submission overdue',                  body:'Expert Witness List for Wilson Medical Malpractice was due yesterday.',           meta:'CASE-2024-009 · Robert Taylor',    time:this._h(26),  read:false, actionLabel:'View Case' },
-    { id:'n3',  category:'deadline',   priority:'high',   title:'Hearing Tomorrow: Martinez Family Trust',   body:'Estate planning document review hearing at 2:30 PM. Prepare all materials.',       meta:'CASE-2024-003 · Michael Chen',     time:this._h(5),   read:false, actionLabel:'View Case' },
-    { id:'n4',  category:'deadline',   priority:'normal', title:'Contract review due in 5 days',             body:'Thompson Real Estate contract review must be completed by Mar 15.',               meta:'CASE-2024-007 · Michael Chen',     time:this._d(2),   read:true,  actionLabel:'Open Document' },
-    { id:'n5',  category:'document',   priority:'high',   title:'New Document: Contract_Amendment_v3.pdf',   body:'Uploaded to Johnson vs. State Corp by Sarah Williams · 2.4 MB',                   meta:'CASE-2024-001',                    time:this._h(2),   read:false, actionLabel:'Review' },
-    { id:'n6',  category:'document',   priority:'normal', title:'New Document: Witness_Statement_Final.docx',body:'Uploaded to Martinez Family Trust by Michael Chen · 1.8 MB',                     meta:'CASE-2024-003',                    time:this._h(4),   read:false, actionLabel:'Open' },
-    { id:'n7',  category:'document',   priority:'normal', title:'Client signed NDA',                         body:'Anderson Industries electronically signed the Non-Disclosure Agreement.',         meta:'CASE-2024-005',                    time:this._d(1),   read:true,  actionLabel:'Download' },
-    { id:'n8',  category:'document',   priority:'normal', title:'Court order received',                      body:'Order re: Motion to Compel Discovery received from District Court.',               meta:'CASE-2024-009',                    time:this._d(3),   read:true },
-    { id:'n9',  category:'assignment', priority:'urgent', title:'New Case: Peterson vs. Metro Transit',       body:'Assigned to Sarah Williams by Michael Chen — pending acceptance.',                meta:'CASE-2024-015 · Civil Litigation',  time:this._h(1),  read:false, actionLabel:'Accept' },
-    { id:'n10', category:'assignment', priority:'high',   title:'Case Reassignment: Davis Employment',       body:'Reassigned to Michael Chen from Jennifer Lopez.',                                  meta:'CASE-2024-012 · Employment Law',    time:this._h(9),  read:false, actionLabel:'View Case' },
-    { id:'n11', category:'assignment', priority:'normal', title:'New Case: Roberts Estate Planning',         body:'Assigned to Michael Chen by Jennifer Lopez — accepted.',                           meta:'CASE-2024-016 · Estate Law',        time:this._h(3),  read:true },
-    { id:'n12', category:'payment',    priority:'urgent', title:'Payment Overdue: INV-2845 — $12,500',       body:'Invoice for Johnson Corp is 5 days overdue. Immediate follow-up required.',        meta:'INV-2845 · Johnson Corp',           time:this._h(4),  read:false, actionLabel:'Send Reminder' },
-    { id:'n13', category:'payment',    priority:'urgent', title:'Payment Overdue: INV-2832 — $8,750',        body:'Invoice for Wilson Medical is 7 days overdue. Consider escalation.',               meta:'INV-2832 · Wilson Medical',         time:this._h(6),  read:false, actionLabel:'View Invoice' },
-    { id:'n14', category:'payment',    priority:'high',   title:'Invoice due in 5 days — $8,750',            body:'INV-2846 for Martinez Family Trust is due Nov 20.',                                meta:'INV-2846 · Martinez Family',        time:this._h(12), read:false, actionLabel:'View Invoice' },
-    { id:'n15', category:'payment',    priority:'normal', title:'Payment received — $15,200',                body:'Thompson Properties made full payment for INV-2840. Receipt generated.',            meta:'INV-2840 · Thompson Properties',    time:this._d(1),  read:true,  actionLabel:'View Receipt' },
-    { id:'n16', category:'system',     priority:'normal', title:'System Update Scheduled',                   body:'LegalFlow maintenance Nov 17 from 2:00–4:00 AM EST. Save your work beforehand.',  meta:'System',                            time:this._d(1),  read:true },
-    { id:'n17', category:'system',     priority:'normal', title:'New Feature: AI Document Summarization',    body:'Upload any legal document to get instant summaries and key point extraction.',     meta:'System',                            time:this._d(2),  read:true },
-    { id:'n18', category:'system',     priority:'high',   title:'Security Update Applied',                   body:'Account security enhanced with latest encryption protocols. No action required.',  meta:'Settings · Security',               time:this._d(3),  read:true },
-    { id:'n19', category:'system',     priority:'normal', title:'Storage Limit Approaching',                 body:'Tenant storage is at 67% capacity. Consider upgrading or archiving old files.',    meta:'Settings · Storage',                time:this._d(5),  read:true },
-  ]);
-
   // ── Filtering ─────────────────────────────────────────────
   filteredNotifications = computed(() => {
     const ms: Record<string, number> = { today:86_400_000, '7days':7*86_400_000, '30days':30*86_400_000 };
@@ -214,11 +178,9 @@ export class Notifications {
   }
   get totalUnread() { return this.countUnread('all'); }
 
-  markAllRead() { this.allNotifications.update(l => l.map(n => ({ ...n, read: true }))); }
-  markRead(id: string) { this.allNotifications.update(l => l.map(n => n.id === id ? { ...n, read: true } : n)); }
-  dismiss(id: string)  { this.allNotifications.update(l => l.filter(n => n.id !== id)); }
-
-  private _sync = effect(() => { this.notifService.setUnreadCount(this.totalUnread); });
+  markAllRead() { this.notifService.markAllRead(); }
+  markRead(id: string) { this.notifService.markRead(id); }
+  dismiss(id: string)  { this.notifService.dismiss(id); }
 
   // ── WEB-NOTIF-05 — Settings ───────────────────────────────
   showSettings = signal(false);
@@ -256,5 +218,9 @@ export class Notifications {
     if (m < 60) return `${m}m ago`;
     if (h < 24) return `${h}h ago`;
     return `${d}d ago`;
+  }
+
+  ngOnInit() {
+    this.notifService.loadNotifications();
   }
 }

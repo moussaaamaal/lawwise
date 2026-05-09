@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException
-
 from app.core.dependencies import get_current_user
 from app.core.database import supabase
 
@@ -23,4 +22,14 @@ async def mark_one_read(notification_id: str, current_user=Depends(get_current_u
         raise HTTPException(status_code=404, detail="Notification not found")
     supabase.table("notification").update({"is_read": True}).eq("id", notification_id).execute()
     return {"message": "Notification marked as read"}
+
+
+@router.delete("/{notification_id}")
+async def delete_notification(notification_id: str, current_user=Depends(get_current_user)):
+    result = supabase.table("notification").select("id").eq("id", notification_id).eq("user_id", current_user["id"]).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    supabase.table("notification").delete().eq("id", notification_id).execute()
+    return {"message": "Notification deleted"}
+
 

@@ -33,9 +33,11 @@ class UpdateTaskStatusRequest(BaseModel):
 
 class CreateNoteRequest(BaseModel):
     case_id: str
+    title: Optional[str] = None
     content: str
 
 class UpdateNoteRequest(BaseModel):
+    title: Optional[str] = None
     content: str
 
 # ═══════════════════════════════════════════════════════
@@ -53,7 +55,9 @@ async def list_tasks(
     query = (
         supabase.table("task")
 
+
         .select("*, case_file(id, title, case_number), app_user!task_assigned_to_fkey(id, full_name)")
+
 
         .eq("firm_id", current_user["firm_id"])
     )
@@ -140,7 +144,9 @@ async def list_notes(
     query = (
         supabase.table("note")
 
+
         .select("*, app_user!note_lawyer_id_fkey(id, full_name)")
+
 
         .eq("firm_id", current_user["firm_id"])
     )
@@ -153,17 +159,20 @@ async def list_notes(
 
 @router.post("/api/notes", status_code=201)
 async def create_note(body: CreateNoteRequest, current_user=Depends(get_lawyer)):
-    result = supabase.table("note").insert({
+    content = f"{body.title}\n\n{body.content}" if body.title else body.content
+    data = {
         "firm_id":   current_user["firm_id"],
         "case_id":   body.case_id,
         "lawyer_id": current_user["id"],
-        "content":   body.content,
-    }).execute()
+        "content":   content,
+    }
+
+    result = supabase.table("note").insert(data).execute()
 
     supabase.table("case_timeline").insert({
         "case_id":      body.case_id,
         "firm_id":      current_user["firm_id"],
-        "action":       "Note added",
+        "action":       f"Note added: {body.title}" if body.title else "Note added",
         "performed_by": current_user["id"],
     }).execute()
 
@@ -173,9 +182,11 @@ async def create_note(body: CreateNoteRequest, current_user=Depends(get_lawyer))
 
 @router.put("/api/notes/{note_id}")
 async def update_note(note_id: str, body: UpdateNoteRequest, current_user=Depends(get_lawyer)):
+    content = f"{body.title}\n\n{body.content}" if body.title else body.content
+    data: dict = {"content": content}
     result = (
         supabase.table("note")
-        .update({"content": body.content})
+        .update(data)
         .eq("id", note_id)
         .eq("firm_id", current_user["firm_id"])
         .execute()

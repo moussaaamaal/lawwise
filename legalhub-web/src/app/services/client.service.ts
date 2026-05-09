@@ -119,4 +119,39 @@ export class ClientService {
     );
     this.clientsSignal.update(list => list.filter(c => c.id !== id));
   }
+
+  async uploadAvatar(id: string, file: File): Promise<Client> {
+    const form = new FormData();
+    form.append('file', file);
+    const raw = await firstValueFrom(
+      this.http.post<Record<string, unknown>>(`${this.api}/api/clients/${id}/avatar`, form)
+    );
+    const updated = this._map(raw);
+    this.clientsSignal.update(list => list.map(c => c.id === id ? updated : c));
+    return updated;
+  }
+
+  async fetchClientCases(clientId: string): Promise<any[]> {
+    try {
+      return await firstValueFrom(
+        this.http.get<any[]>(`${this.api}/api/clients/${clientId}/cases`)
+      );
+    } catch { return []; }
+  }
+
+  async fetchClientInvoices(clientId: string): Promise<any[]> {
+    try {
+      return await firstValueFrom(
+        this.http.get<any[]>(`${this.api}/api/clients/${clientId}/invoices`)
+      );
+    } catch { return []; }
+  }
+
+  async fetchClientDocuments(clientId: string): Promise<any[]> {
+    try {
+      return await firstValueFrom(
+        this.http.get<any[]>(`${this.api}/api/clients/${clientId}/documents`)
+      );
+    } catch { return []; }
+  }
 }

@@ -1,24 +1,7 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, inject, OnInit } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-
-interface StaffMember {
-  avatar: string;
-  borderCls: string;
-  name: string;
-  id: string;
-  title: string;
-  dept: string;
-  deptCls: string;
-  phone: string;
-  email: string;
-  roleCls: string;
-  roleLabel: string;
-  statusCls: string;
-  status: string;
-  since: string;
-  cases: number;
-}
+import { StaffService, StaffMember } from '../../../services/staff.service';
 
 @Component({
   selector: 'app-staff',
@@ -26,59 +9,168 @@ interface StaffMember {
   imports: [NgClass, FormsModule],
   templateUrl: './staff.html',
 })
-export class Staff {
+export class Staff implements OnInit {
+  private staffService = inject(StaffService);
 
-  stats = [
-    { icon: 'fa-solid fa-users',      iconBg: 'bg-blue-100',   iconColor: 'text-blue-600',   label: 'Total Staff',     value: '20', note: '12 lawyers, 8 support',     badgeCls: 'bg-blue-100 text-blue-700',   badge: 'All' },
-    { icon: 'fa-solid fa-user-tie',   iconBg: 'bg-amber-100',  iconColor: 'text-amber-600',  label: 'Senior Partners', value: '2',  note: 'Managing the firm',          badgeCls: 'bg-amber-100 text-amber-700', badge: 'Partners' },
-    { icon: 'fa-solid fa-user-check', iconBg: 'bg-green-100',  iconColor: 'text-green-600',  label: 'Active Members',  value: '17', note: '3 pending onboarding',       badgeCls: 'bg-green-100 text-green-700', badge: 'Active' },
-    { icon: 'fa-solid fa-building',   iconBg: 'bg-purple-100', iconColor: 'text-purple-600', label: 'Departments',     value: '5',  note: 'Across all practice areas',   badgeCls: 'bg-purple-100 text-purple-700',badge: 'Depts' },
-    { icon: 'fa-solid fa-briefcase',  iconBg: 'bg-red-100',    iconColor: 'text-red-600',    label: 'Active Cases',    value: '48', note: 'Assigned to staff',           badgeCls: 'bg-red-100 text-red-700',     badge: 'Cases' },
+  readonly countryCodes = [
+    { code: '+216', flag: '🇹🇳', name: 'Tunisie' },
+    { code: '+213', flag: '🇩🇿', name: 'Algérie' },
+    { code: '+212', flag: '🇲🇦', name: 'Maroc' },
+    { code: '+20',  flag: '🇪🇬', name: 'Égypte' },
+    { code: '+218', flag: '🇱🇾', name: 'Libye' },
+    { code: '+33',  flag: '🇫🇷', name: 'France' },
+    { code: '+1',   flag: '🇺🇸', name: 'USA/Canada' },
+    { code: '+44',  flag: '🇬🇧', name: 'UK' },
+    { code: '+49',  flag: '🇩🇪', name: 'Allemagne' },
+    { code: '+39',  flag: '🇮🇹', name: 'Italie' },
+    { code: '+34',  flag: '🇪🇸', name: 'Espagne' },
+    { code: '+966', flag: '🇸🇦', name: 'Arabie Saoudite' },
+    { code: '+971', flag: '🇦🇪', name: 'Émirats Arabes' },
+    { code: '+974', flag: '🇶🇦', name: 'Qatar' },
+    { code: '+91',  flag: '🇮🇳', name: 'Inde' },
   ];
 
-  deptStats = [
-    { label: 'Civil Litigation', count: 4, color: 'bg-blue-500',   pct: 28 },
-    { label: 'Estate Law',       count: 3, color: 'bg-green-500',  pct: 21 },
-    { label: 'Corporate Law',    count: 3, color: 'bg-purple-500', pct: 21 },
-    { label: 'Real Estate',      count: 2, color: 'bg-amber-500',  pct: 14 },
-    { label: 'Employment Law',   count: 2, color: 'bg-red-500',    pct: 14 },
-  ];
-
-  staffMembers: StaffMember[] = [
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-5.jpg', borderCls:'border-green-500',  name:'Sarah Williams', id:'EMP-001', title:'Senior Associate',  dept:'Civil Litigation',deptCls:'bg-blue-100 text-blue-700',   phone:'+216 97 654 321', email:'sarah.williams@legalhub.tn',   roleCls:'bg-green-100 text-green-700', roleLabel:'Associate',      statusCls:'bg-green-100 text-green-700', status:'Active',   since:'Mar 2019', cases:12 },
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg', borderCls:'border-blue-500',   name:'Michael Chen',   id:'EMP-003', title:'Partner',           dept:'Estate Law',     deptCls:'bg-green-100 text-green-700', phone:'+216 99 876 543', email:'michael.chen@legalhub.tn',     roleCls:'bg-blue-100 text-blue-700',   roleLabel:'Senior Partner', statusCls:'bg-green-100 text-green-700', status:'Active',   since:'Jun 2018', cases:6  },
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-6.jpg', borderCls:'border-purple-500', name:'Jennifer Lopez', id:'EMP-004', title:'Legal Secretary',   dept:'Administration', deptCls:'bg-gray-100 text-gray-700',   phone:'+216 55 432 109', email:'jennifer.lopez@legalhub.tn',   roleCls:'bg-purple-100 text-purple-700',roleLabel:'Secretary',      statusCls:'bg-green-100 text-green-700', status:'Active',   since:'Feb 2020', cases:0  },
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-4.jpg', borderCls:'border-amber-500',  name:'Robert Taylor',  id:'EMP-005', title:'Paralegal',         dept:'Corporate Law',  deptCls:'bg-purple-100 text-purple-700',phone:'+216 98 765 432', email:'robert.taylor@legalhub.tn',    roleCls:'bg-amber-100 text-amber-700', roleLabel:'Paralegal',      statusCls:'bg-amber-100 text-amber-700', status:'Pending',  since:'Sep 2023', cases:5  },
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-8.jpg', borderCls:'border-green-500',  name:'Amanda Foster',  id:'EMP-006', title:'Junior Associate',  dept:'Real Estate',    deptCls:'bg-amber-100 text-amber-700', phone:'+216 99 123 456', email:'amanda.foster@legalhub.tn',    roleCls:'bg-green-100 text-green-700', roleLabel:'Associate',      statusCls:'bg-green-100 text-green-700', status:'Active',   since:'Nov 2021', cases:4  },
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-1.jpg', borderCls:'border-red-400',    name:'Thomas Reed',    id:'EMP-007', title:'Of Counsel',        dept:'Employment Law', deptCls:'bg-red-100 text-red-700',     phone:'+216 97 876 543', email:'thomas.reed@legalhub.tn',      roleCls:'bg-gray-100 text-gray-700',   roleLabel:'Of Counsel',     statusCls:'bg-red-100 text-red-700',     status:'Inactive', since:'Aug 2017', cases:0  },
-    { avatar:'https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-7.jpg', borderCls:'border-green-500',  name:'Lisa Park',      id:'EMP-008', title:'Office Manager',    dept:'Administration', deptCls:'bg-gray-100 text-gray-700',   phone:'+216 55 987 654', email:'lisa.park@legalhub.tn',        roleCls:'bg-gray-100 text-gray-700',   roleLabel:'Management',     statusCls:'bg-green-100 text-green-700', status:'Active',   since:'May 2019', cases:0  },
-  ];
-
-  activeFilter = signal('All');
-  filters      = ['All', 'Active', 'Pending', 'Inactive'];
-  setFilter(f: string) { this.activeFilter.set(f); }
-
-  get filteredStaff() {
-    if (this.activeFilter() === 'All') return this.staffMembers;
-    return this.staffMembers.filter(s => s.status === this.activeFilter());
+  private splitPhone(full: string): { code: string; number: string } {
+    const match = (full ?? '').match(/^(\+\d{1,4})\s*(.*)/);
+    if (match) {
+      const known = this.countryCodes.find(c => c.code === match[1]);
+      if (known) return { code: match[1], number: match[2] };
+    }
+    return { code: '+216', number: full ?? '' };
   }
 
-  viewMode = signal<'grid' | 'list'>('grid');
+  get staffMembers(): StaffMember[] { return this.staffService.staff(); }
 
-  // ── Modal ─────────────────────────────────────────────────
+  get stats() {
+    const members    = this.staffMembers;
+    const lawyers    = members.filter(m => m.role === 'LAWYER').length;
+    const admins     = members.filter(m => m.role === 'FIRM_ADMIN').length;
+    const active     = members.filter(m => m.is_active).length;
+    const pending    = members.filter(m => !m.is_active).length;
+    const totalCases = members.reduce((sum, m) => sum + m.cases, 0);
+    return [
+      { icon:'fa-solid fa-users',      iconBg:'bg-blue-100',   iconColor:'text-blue-600',   label:'Total Staff',     value:String(members.length), note:`${lawyers} lawyers, ${admins} admins`, badgeCls:'bg-blue-100 text-blue-700',    badge:'All'      },
+      { icon:'fa-solid fa-user-tie',   iconBg:'bg-amber-100',  iconColor:'text-amber-600',  label:'Senior Partners', value:String(admins),          note:'Managing the firm',                   badgeCls:'bg-amber-100 text-amber-700',  badge:'Partners' },
+      { icon:'fa-solid fa-user-check', iconBg:'bg-green-100',  iconColor:'text-green-600',  label:'Active Members',  value:String(active),          note:`${pending} pending/inactive`,         badgeCls:'bg-green-100 text-green-700',  badge:'Active'   },
+      { icon:'fa-solid fa-building',   iconBg:'bg-purple-100', iconColor:'text-purple-600', label:'Departments',     value:'2',                     note:'Leadership & Legal',                  badgeCls:'bg-purple-100 text-purple-700', badge:'Depts'    },
+      { icon:'fa-solid fa-briefcase',  iconBg:'bg-red-100',    iconColor:'text-red-600',    label:'Active Cases',    value:String(totalCases),      note:`Across ${active} active members`,     badgeCls:'bg-red-100 text-red-700',      badge:'Cases'    },
+    ];
+  }
+
+  // ── Filters ───────────────────────────────────────────
+  activeFilter = signal('All');
+  filters      = ['All', 'Active', 'Pending', 'Inactive'];
+  deptFilter   = signal('');
+  roleFilter   = signal('');
+  sortBy       = signal('Name A–Z');
+
+  setFilter(f: string) { this.activeFilter.set(f); }
+
+  get availableDepts(): string[] {
+    return [...new Set(this.staffMembers.map(m => m.dept))].sort();
+  }
+  get availableRoles(): string[] {
+    return [...new Set(this.staffMembers.map(m => m.roleLabel))].sort();
+  }
+
+  get filteredStaff(): StaffMember[] {
+    let list = this.staffMembers;
+    if (this.activeFilter() !== 'All')  list = list.filter(s => s.status === this.activeFilter());
+    if (this.deptFilter())              list = list.filter(s => s.dept === this.deptFilter());
+    if (this.roleFilter())              list = list.filter(s => s.roleLabel === this.roleFilter());
+    const sort = this.sortBy();
+    if      (sort === 'Name A–Z')    list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    else if (sort === 'Name Z–A')    list = [...list].sort((a, b) => b.name.localeCompare(a.name));
+    else if (sort === 'Newest First') list = [...list].reverse();
+    return list;
+  }
+
+  // ── Selected member (shared across modals) ────────────
+  private selectedMember = signal<StaffMember | null>(null);
+
+  // ── VIEW modal ────────────────────────────────────────
+  private _showView = signal(false);
+  get viewMember(): StaffMember | null { return this._showView() ? this.selectedMember() : null; }
+
+  openView(m: StaffMember) { this.selectedMember.set(m); this._showView.set(true); }
+  closeView() { this._showView.set(false); }
+
+  // ── EDIT modal ────────────────────────────────────────
+  private _showEdit = signal(false);
+  editForm   = signal({ fullName: '', phoneCode: '+216', phone: '', role: '' });
+  isSaving   = signal(false);
+  editError  = signal('');
+
+  get editMember(): StaffMember | null { return this._showEdit() ? this.selectedMember() : null; }
+
+  openEdit(m: StaffMember) {
+    this.selectedMember.set(m);
+    const { code: phoneCode, number: phone } = this.splitPhone(m.phone);
+    this.editForm.set({ fullName: m.name, phoneCode, phone, role: m.role });
+    this.editError.set('');
+    this._showEdit.set(true);
+  }
+  closeEdit() { this._showEdit.set(false); }
+
+  async saveEdit() {
+    const m = this.selectedMember();
+    if (!m) return;
+    this.isSaving.set(true);
+    this.editError.set('');
+    try {
+      const f = this.editForm();
+      await this.staffService.updateMember(m.id, f.fullName, `${f.phoneCode} ${f.phone}`.trim(), f.role);
+      this._showEdit.set(false);
+    } catch (err: unknown) {
+      const detail = (err as { error?: { detail?: string } })?.error?.detail;
+      this.editError.set(detail ?? 'Failed to update. Please try again.');
+    } finally {
+      this.isSaving.set(false);
+    }
+  }
+
+  // ── DELETE modal ──────────────────────────────────────
+  private _showDelete = signal(false);
+  isDeleting  = signal(false);
+  deleteError = signal('');
+
+  get deleteMember(): StaffMember | null { return this._showDelete() ? this.selectedMember() : null; }
+
+  openDelete(m: StaffMember) {
+    this.selectedMember.set(m);
+    this.deleteError.set('');
+    this._showDelete.set(true);
+  }
+  closeDelete() { this._showDelete.set(false); }
+
+  async confirmDelete() {
+    const m = this.selectedMember();
+    if (!m) return;
+    this.isDeleting.set(true);
+    this.deleteError.set('');
+    try {
+      await this.staffService.deactivate(m.id);
+      this._showDelete.set(false);
+    } catch (err: unknown) {
+      const detail = (err as { error?: { detail?: string } })?.error?.detail;
+      this.deleteError.set(detail ?? 'Failed to deactivate. Please try again.');
+    } finally {
+      this.isDeleting.set(false);
+    }
+  }
+
+  // ── ADD STAFF modal ───────────────────────────────────
   showModal    = signal(false);
   modalStep    = signal<1|2|3|4>(1);
   isSubmitting = signal(false);
+  errorMsg     = signal('');
 
   departments = ['Leadership','Civil Litigation','Estate Law','Corporate Law','Real Estate','Employment Law','Administration'];
   roles       = ['Senior Partner','Associate','Junior Associate','Paralegal','Secretary','Of Counsel','Management','Intern'];
   titles      = ['Managing Partner','Partner','Senior Associate','Junior Associate','Of Counsel','Paralegal','Legal Secretary','Office Manager'];
 
-  // Step 1 — Personal Info
-  f1 = signal({ firstName:'', lastName:'', dob:'', gender:'', phone:'', email:'', address:'', city:'' });
-  // Step 2 — Professional Info
+  f1 = signal({ firstName:'', lastName:'', dob:'', gender:'', phoneCode:'+216', phone:'', email:'', address:'', city:'' });
   f2 = signal({ title:'', role:'', dept:'', startDate:'', employeeId:'', barNumber:'', practiceAreas:'' });
-  // Step 3 — Access & Settings
   f3 = signal({ status:'Active', systemAccess:true, caseAccess:true, billingAccess:false, emergencyName:'', emergencyPhone:'', notes:'' });
 
   get step1Valid() {
@@ -89,14 +181,14 @@ export class Staff {
     const f = this.f2();
     return f.role.length > 0 && f.dept.length > 0;
   }
-  get progressPct()  { return ((this.modalStep() - 1) / 3) * 100; }
+  get progressPct() { return ((this.modalStep() - 1) / 3) * 100; }
 
   get stepLabels() {
     const s = this.modalStep();
     return [
-      { label:'Personal Info',   active: s === 1, done: s > 1 },
-      { label:'Professional',    active: s === 2, done: s > 2 },
-      { label:'Access & Settings', active: s === 3, done: s > 3 },
+      { label:'Personal Info',     active:s===1, done:s>1 },
+      { label:'Professional',      active:s===2, done:s>2 },
+      { label:'Access & Settings', active:s===3, done:s>3 },
     ];
   }
 
@@ -112,13 +204,15 @@ export class Staff {
   }
 
   openModal() {
-    this.f1.set({ firstName:'', lastName:'', dob:'', gender:'', phone:'', email:'', address:'', city:'' });
+    this.f1.set({ firstName:'', lastName:'', dob:'', gender:'', phoneCode:'+216', phone:'', email:'', address:'', city:'' });
     this.f2.set({ title:'', role:'', dept:'', startDate:'', employeeId:'', barNumber:'', practiceAreas:'' });
     this.f3.set({ status:'Active', systemAccess:true, caseAccess:true, billingAccess:false, emergencyName:'', emergencyPhone:'', notes:'' });
     this.modalStep.set(1);
+    this.errorMsg.set('');
     this.showModal.set(true);
   }
   closeModal() { this.showModal.set(false); }
+
   nextStep() {
     const s = this.modalStep();
     if (s < 3) this.modalStep.set((s + 1) as 1|2|3|4);
@@ -129,44 +223,22 @@ export class Staff {
     if (s > 1) this.modalStep.set((s - 1) as 1|2|3|4);
   }
 
-  submitStaff() {
+  async submitStaff() {
     this.isSubmitting.set(true);
-    setTimeout(() => {
-      const f1 = this.f1(); const f2 = this.f2(); const f3 = this.f3();
-      const roleColors: Record<string, string> = {
-        'Senior Partner':'bg-blue-100 text-blue-700', 'Associate':'bg-green-100 text-green-700',
-        'Junior Associate':'bg-green-100 text-green-700', 'Paralegal':'bg-amber-100 text-amber-700',
-        'Secretary':'bg-purple-100 text-purple-700', 'Of Counsel':'bg-gray-100 text-gray-700',
-        'Management':'bg-gray-100 text-gray-700', 'Intern':'bg-pink-100 text-pink-700',
-      };
-      const deptColors: Record<string, string> = {
-        'Civil Litigation':'bg-blue-100 text-blue-700', 'Estate Law':'bg-green-100 text-green-700',
-        'Corporate Law':'bg-purple-100 text-purple-700', 'Real Estate':'bg-amber-100 text-amber-700',
-        'Employment Law':'bg-red-100 text-red-700', 'Administration':'bg-gray-100 text-gray-700',
-        'Leadership':'bg-blue-100 text-blue-700',
-      };
-      const newId = `EMP-${String(this.staffMembers.length + 1).padStart(3, '0')}`;
-      const year = new Date().getFullYear();
-      const month = new Date().toLocaleString('en-US', { month: 'short' });
-      this.staffMembers.unshift({
-        avatar: `https://ui-avatars.com/api/?name=${f1.firstName}+${f1.lastName}&background=f59e0b&color=fff`,
-        borderCls: 'border-amber-500',
-        name:  `${f1.firstName} ${f1.lastName}`,
-        id:    newId,
-        title: f2.title || f2.role,
-        dept:  f2.dept,
-        deptCls:   deptColors[f2.dept] || 'bg-gray-100 text-gray-700',
-        phone: f1.phone,
-        email: f1.email,
-        roleCls:   roleColors[f2.role] || 'bg-gray-100 text-gray-700',
-        roleLabel: f2.role,
-        statusCls: f3.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700',
-        status:    f3.status,
-        since:     `${month} ${year}`,
-        cases:     0,
-      });
-      this.isSubmitting.set(false);
+    this.errorMsg.set('');
+    try {
+      const f1 = this.f1();
+      await this.staffService.inviteStaff(f1.email, `${f1.firstName} ${f1.lastName}`.trim());
       this.modalStep.set(4);
-    }, 900);
+    } catch (err: unknown) {
+      const detail = (err as { error?: { detail?: string } })?.error?.detail;
+      this.errorMsg.set(detail ?? 'Failed to invite staff member. Please try again.');
+    } finally {
+      this.isSubmitting.set(false);
+    }
+  }
+
+  async ngOnInit() {
+    await this.staffService.loadStaff();
   }
 }

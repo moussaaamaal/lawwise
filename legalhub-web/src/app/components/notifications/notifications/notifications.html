@@ -185,7 +185,14 @@
   <!-- ══ NOTIFICATION LIST ══ -->
   <section class="px-8 pb-8">
 
-    @if (filteredNotifications().length === 0) {
+    @if (loading()) {
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm py-20 flex flex-col items-center text-center">
+        <div class="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-gray-400 font-medium">Loading notifications…</p>
+      </div>
+    }
+
+    @if (!loading() && filteredNotifications().length === 0) {
       <div class="bg-white rounded-xl border border-gray-200 shadow-sm py-20 flex flex-col items-center text-center">
         <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
           <i class="fa-solid fa-bell-slash text-gray-400 text-2xl"></i>
@@ -195,7 +202,7 @@
       </div>
     }
 
-    @for (group of groupedNotifications(); track group.label) {
+    @if (!loading()) { @for (group of groupedNotifications(); track group.label) {
       <div class="flex items-center space-x-3 mb-3 mt-1">
         <span class="text-sm font-bold text-gray-400 uppercase tracking-wider">{{ group.label }}</span>
         <div class="flex-1 h-px bg-gray-200"></div>
@@ -288,6 +295,7 @@
           </div>
         }
       </div>
+    }
     }
 
   </section>

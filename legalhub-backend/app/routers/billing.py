@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.dependencies import get_lawyer, get_current_user
@@ -5,7 +6,7 @@ from app.core.database import supabase
 from app.core.email import send_invoice_email, send_payment_reminder_email
 from pydantic import BaseModel
 from typing import Optional, List
-from app.models.enums import InvoiceStatus
+from app.models.enums import InvoiceStatus, BillingType
 import secrets
 
 router = APIRouter(prefix="/api/invoices", tags=["Billing"])
@@ -39,6 +40,7 @@ class InvoiceItem(BaseModel):
 class CreateInvoiceRequest(BaseModel):
     client_id: str
     case_id: Optional[str] = None
+    billing_type: Optional[BillingType] = None
     items: List[InvoiceItem]
     tax_rate: float = 0
     due_date: date
@@ -58,11 +60,34 @@ class UpdateInvoiceRequest(BaseModel):
 # IMPORTANT: Must be declared BEFORE /{invoice_id} to avoid
 # FastAPI interpreting "analytics" as an invoice_id path param.
 
+@router.get("/analytics/monthly-revenue")
+async def monthly_revenue_analytics(current_user=Depends(get_lawyer)):
+    """Return aggregated revenue and invoiced amounts grouped by month (last 12 months)."""
+    result = (
+        supabase.table("invoice")
+        .select("issue_date, total_amount, status")
+        .eq("firm_id", current_user["firm_id"])
+        .execute()
+    )
+    monthly: dict = defaultdict(lambda: {"revenue": 0.0, "invoiced": 0.0})
+    for inv in (result.data or []):
+        month = str(inv.get("issue_date") or "")[:7]
+        if not month:
+            continue
+        amount = float(inv.get("total_amount") or 0)
+        monthly[month]["invoiced"] += amount
+        if inv.get("status") == "PAID":
+            monthly[month]["revenue"] += amount
+    sorted_months = sorted(monthly.items())[-12:]
+    return [{"month": k, "revenue": v["revenue"], "invoiced": v["invoiced"]} for k, v in sorted_months]
+
 @router.get("/analytics/summary")
 async def billing_analytics(current_user=Depends(get_lawyer)):
 
 
+
     _auto_mark_overdue(current_user["firm_id"])
+
 
     invoices = (
         supabase.table("invoice")
@@ -97,7 +122,9 @@ async def list_invoices(
     current_user=Depends(get_current_user)
 ):
 
+
     _auto_mark_overdue(current_user["firm_id"])
+
 
     query = (
         supabase.table("invoice")
@@ -140,6 +167,7 @@ async def create_invoice(body: CreateInvoiceRequest, current_user=Depends(get_la
         "lawyer_id":      current_user["id"],
         "client_id":      body.client_id,
         "case_id":        body.case_id,
+        "billing_type":   body.billing_type.value if body.billing_type else None,
         "invoice_number": invoice_number,
         "status":         InvoiceStatus.DRAFT,
         "subtotal":       subtotal,

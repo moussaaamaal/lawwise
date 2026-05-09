@@ -227,24 +227,140 @@ export class CasesList implements OnInit {
 
   // ── Export ────────────────────────────────────────────────
 
-  exportCsv() {
-    const rows = [
-      ['Case Number', 'Title', 'Client', 'Type', 'Status', 'Priority', 'Court', 'Next Hearing'],
-      ...this.filteredCases.map(c => [
-        c.caseNumber, c.title, c.client ?? '', this.typeLabel(c.type),
-        this.statusLabel(c.status), this.priorityLabel(c.priority),
-        c.court ?? '', this.formatDate(c.nextHearing),
-      ]),
-    ];
-    const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = 'cases.csv'; a.click();
-    URL.revokeObjectURL(url);
+  exportPdf() {
+    const rows = this.filteredCases.map(c => [
+      c.caseNumber, c.title, c.client ?? '—', this.typeLabel(c.type),
+      this.statusLabel(c.status), this.priorityLabel(c.priority),
+      c.court ?? '—', this.formatDate(c.nextHearing),
+    ]);
+    const headers = ['Case #', 'Title', 'Client', 'Type', 'Status', 'Priority', 'Court', 'Next Hearing'];
+    const tableRows = rows.map(r =>
+      `<tr>${r.map(v => `<td>${v}</td>`).join('')}</tr>`
+    ).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Cases Export</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; padding: 20px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  p { color: #666; margin-bottom: 16px; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f59e0b; color: #fff; padding: 8px 10px; text-align: left; font-size: 11px; }
+  td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; }
+  tr:nth-child(even) td { background: #fafafa; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+<h1>Case Management Report</h1>
+<p>Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} — ${rows.length} case(s)</p>
+<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+<tbody>${tableRows}</tbody></table>
+</body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
   }
 
   goToDetail(id: string) { this.router.navigate(['/cases', id]); }
+
+  // ── Edit Modal (2 steps — identique à case-detail) ──────────
+
+  showEditModal = signal(false);
+  editStep      = signal<1|2>(1);
+  isSaving      = signal(false);
+  editingCase   = signal<Case | null>(null);
+
+  readonly statusList   = ['NEW','INVESTIGATION','PRE_TRIAL','TRIAL','APPEAL','SETTLED','CLOSED'];
+  readonly priorityList = ['NORMAL','MEDIUM','HIGH','URGENT'];
+
+  editF1 = signal({ title: '', caseType: '', status: '', priority: '', description: '' });
+  editF2 = signal({ courtName: '', courtLocation: '', judgeName: '', hearingDate: '', billingType: '', caseValue: '' });
+
+  private readonly caseTypeLabelMap: Record<string, string> = {
+    CRIMINAL: 'Criminal Law', CIVIL: 'Civil Law', CORPORATE: 'Corporate Law',
+    FAMILY: 'Family Law', REAL_ESTATE: 'Real Estate Law', IMMIGRATION: 'Immigration Law',
+    PERSONAL_INJURY: 'Personal Injury', IP: 'Intellectual Property',
+    LABOR: 'Labor Law', TAX: 'Tax Law',
+  };
+
+  get editStep1Valid() {
+    const f = this.editF1();
+    return f.title.trim().length > 0 && f.caseType.length > 0 && f.status.length > 0;
+  }
+
+  get editStepLabels() {
+    const s = this.editStep();
+    return [
+      { label: 'Case Details', active: s === 1, done: s > 1 },
+      { label: 'Court & More', active: s === 2, done: s > 2 },
+    ];
+  }
+
+  private initEditCaseForm(c: Case) {
+    this.editF1.set({
+      title:       c.title,
+      caseType:    this.caseTypeLabelMap[c.type] ?? c.type,
+      status:      c.status,
+      priority:    c.priority,
+      description: c.description ?? '',
+    });
+    this.editF2.set({
+      courtName:     c.court ?? '',
+      courtLocation: '',
+      judgeName:     '',
+      hearingDate:   c.nextHearing ? c.nextHearing.toISOString().split('T')[0] : '',
+      billingType:   '',
+      caseValue:     '',
+    });
+  }
+
+  openEditModal(c: Case) {
+    this.editingCase.set(c);
+    this.initEditCaseForm(c);
+    this.editStep.set(1);
+    this.showEditModal.set(true);
+  }
+
+  closeEditModal() { this.showEditModal.set(false); }
+
+  editNextStep() {
+    if (this.editStep() === 1) this.editStep.set(2);
+    else this.saveCase();
+  }
+
+  editPrevStep() { if (this.editStep() === 2) this.editStep.set(1); }
+
+  async saveCase() {
+    const c = this.editingCase();
+    if (!c) return;
+    this.isSaving.set(true);
+    try {
+      const f1 = this.editF1(); const f2 = this.editF2();
+      const payload: Record<string, unknown> = {
+        title:              f1.title,
+        case_type:          this.caseTypeMap[f1.caseType] ?? f1.caseType,
+        priority:           f1.priority,
+        description:        f1.description || undefined,
+        court_name:         f2.courtName || undefined,
+        court_location:     f2.courtLocation || undefined,
+        judge_name:         f2.judgeName || undefined,
+        first_hearing_date: f2.hearingDate || undefined,
+        billing_type:       f2.billingType ? (this.billingTypeMap[f2.billingType] ?? undefined) : undefined,
+        estimated_value:    f2.caseValue ? Number(f2.caseValue) : undefined,
+      };
+      Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+      await this.caseService.updateCase(c.id, payload);
+      if (f1.status !== c.status) {
+        await this.caseService.updateCaseStatus(c.id, f1.status);
+      }
+      this.closeEditModal();
+    } catch {
+      alert('Failed to update case.');
+    } finally {
+      this.isSaving.set(false);
+    }
+  }
 
   // ── Modal — New Case (3 steps) ────────────────────────────
 
